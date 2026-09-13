@@ -5,5 +5,11 @@
   "company_validated_through": null,
   "readonly_is_user_relative": false,
   "validated_line_writable": true,
-  "validated_line_deletable": true
+  "validated_line_deletable": true,
+  "product_type_field": "type",
+  "product_type_service_value": "service",
+  "invoice_policy_field": "invoice_policy",
+  "invoice_policy_time_materials_value": "delivery",
+  "invoice_policy_flat_rate_value": "order",
+  "pricelist_item_price_field": "fixed_price"
 }

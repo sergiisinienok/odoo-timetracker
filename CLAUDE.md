@@ -28,9 +28,11 @@ Phase 2.1: this instance has no company-level timesheet fallback field —
 `docs/decisions/0003-no-company-validated-through-field.md` before
 implementing `resolve_period_state()`.
 
-Update this line as phases complete. Status detail and the actual reasoning
-belongs in `docs/decisions/` and the plan's own phase-gate checklists, not
-duplicated here.
+Current status: 0.1, 0.2, and 0.3 done — role service products confirmed
+in both invoicing modes, pricelists confirmed client-specific.
+odoo_profile.json also now carries the product/invoicing field names for
+Phase 1 to read rather than hardcode. 0.4 next (per-employee order lines —
+the load-bearing step: proves the assignment model works at all).
 
 ## Ground rules (non-negotiable — from `docs/implementation-plan.md`)
 
