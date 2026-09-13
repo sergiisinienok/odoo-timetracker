@@ -55,16 +55,23 @@ def call(model, method, *args, **kw):
 print(f"Connected to {URL} as uid={uid} ({USER})\n")
 
 # --- 1. Which groups does this user hold? Decides what it may write. ---------
-for group in (
-    "hr_timesheet.group_hr_timesheet_approver",
-    "hr_timesheet.group_timesheet_manager",
-    "base.group_user",
+# has_group() faults over XML-RPC on this instance — see docs/decisions/0001.
+# Read membership directly instead: res.users.all_group_ids -> res.groups.
+me = call("res.users", "read", [uid], fields=["all_group_ids"])
+held = call("res.groups", "read", me[0]["all_group_ids"], fields=["display_name"])
+held_names = {g["display_name"] for g in held}
+
+for label in (
+    "Timesheets / Administrator",
+    "Timesheets / User: all timesheets",
+    "Timesheets / User: own timesheets only",
+    "Role / User",
 ):
-    try:
-        has = call("res.users", "has_group", group)
-    except xmlrpc.client.Fault:
-        has = "n/a"
-    print(f"  {group}: {has}")
+    print(f"  {label}: {label in held_names}")
+
+print(f"\n  All {len(held_names)} held groups:")
+for name in sorted(held_names):
+    print(f"    - {name}")
 
 # --- 2. Validation-related fields on the relevant models --------------------
 for model in ("account.analytic.line", "hr.employee", "res.company"):
