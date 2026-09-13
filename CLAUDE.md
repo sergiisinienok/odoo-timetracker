@@ -28,11 +28,15 @@ Phase 2.1: this instance has no company-level timesheet fallback field —
 `docs/decisions/0003-no-company-validated-through-field.md` before
 implementing `resolve_period_state()`.
 
-Current status: 0.1, 0.2, and 0.3 done — role service products confirmed
-in both invoicing modes, pricelists confirmed client-specific.
-odoo_profile.json also now carries the product/invoicing field names for
-Phase 1 to read rather than hardcode. 0.4 next (per-employee order lines —
-the load-bearing step: proves the assignment model works at all).
+Current status: 0.1–0.4 done. 0.4's mapping mechanism
+(project.sale.line.employee.map) confirmed working exactly as the plan
+named it — two employees, two distinct order lines, same project.
+Assignment validity date enforcement is DROPPED (Appendix D risk #4
+materialized — no usable date field exists on sale.order.line,
+sale.order, or the mapping model; see docs/decisions/0005). Consequence:
+0.7 needs only the two originally-planned Studio fields
+(default_project_field, app_entry_id_field) — no Studio date pair. 0.5
+next (the unpaid-line recipe).
 
 ## Ground rules (non-negotiable — from `docs/implementation-plan.md`)
 

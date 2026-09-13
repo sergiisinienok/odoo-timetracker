@@ -36,6 +36,12 @@ method's normal documented behaviour.
   access-restricted to users holding the "Access Rights" administration
   group — an ordinary internal user, even with high app-level permissions,
   can't read it.
+- `ir.model` is access-restricted the same way as `ir.model.data` — same
+  "Access Rights" administration group requirement. Confirmed in step 0.4.
+  General lesson: don't reach for `ir.*` registry models with this
+  integration user; `fields_get()`'s own `type`/`relation` attributes
+  already answer "does this field exist" and "what does it point to"
+  without needing model-level introspection at all.
 
 ## Changed
 
