@@ -1,0 +1,9 @@
+{
+  "odoo_version": "19.0+e",
+  "validation_field": "validated",
+  "employee_validated_through": "last_validated_timesheet_date",
+  "company_validated_through": null,
+  "readonly_is_user_relative": false,
+  "validated_line_writable": true,
+  "validated_line_deletable": true
+}
