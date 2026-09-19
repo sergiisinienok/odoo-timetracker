@@ -28,15 +28,11 @@ Phase 2.1: this instance has no company-level timesheet fallback field —
 `docs/decisions/0003-no-company-validated-through-field.md` before
 implementing `resolve_period_state()`.
 
-Current status: 0.1–0.4 done. 0.4's mapping mechanism
-(project.sale.line.employee.map) confirmed working exactly as the plan
-named it — two employees, two distinct order lines, same project.
-Assignment validity date enforcement is DROPPED (Appendix D risk #4
-materialized — no usable date field exists on sale.order.line,
-sale.order, or the mapping model; see docs/decisions/0005). Consequence:
-0.7 needs only the two originally-planned Studio fields
-(default_project_field, app_entry_id_field) — no Studio date pair. 0.5
-next (the unpaid-line recipe).
+Current status: 0.1–0.5 done. Unpaid-line recipe confirmed: create() with
+so_line=False passed explicitly — Odoo accepts this directly, no
+clear-after-create workaround needed, and unpaid lines contribute zero to
+the mapped order line's delivered quantity. 0.6 next (the internal
+project).
 
 ## Ground rules (non-negotiable — from `docs/implementation-plan.md`)
 
@@ -89,6 +85,15 @@ they don't get rediscovered every session.
 - **Validated lines are writable and deletable over the API** — confirmed by
   direct test, not assumed. Matches the plan's own expectation: stock Odoo's
   validation is not enforcement, so the app has to be.
+- **The integration user needs Project and Sales access, not just
+  Timesheets.** - 0.1 only granted Timesheets Administrator; reading
+  sale.order.line directly (first needed in 0.5) requires Project and/or
+  Sales access too — both were still "No." Worth remembering when
+  provisioning the real integration user on particlesg.odoo.com: grant
+  all three from the start, not just Timesheets. Avoid "Sales/User: Own
+  Documents Only" specifically — it scopes to orders where this user is
+  the salesperson, which is wrong for a service account reading every
+  client's orders.
 
 ## Repo layout
 
