@@ -13,5 +13,6 @@
   "invoice_policy_flat_rate_value": "order",
   "pricelist_item_price_field": "fixed_price",
   "assignment_start_source": null,
-  "assignment_end_source": null
+  "assignment_end_source": null,
+  "unpaid_recipe": "create() with so_line=False passed explicitly"
 }
