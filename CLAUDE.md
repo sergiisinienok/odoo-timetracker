@@ -28,11 +28,13 @@ Phase 2.1: this instance has no company-level timesheet fallback field —
 `docs/decisions/0003-no-company-validated-through-field.md` before
 implementing `resolve_period_state()`.
 
-Current status: 0.1–0.5 done. Unpaid-line recipe confirmed: create() with
-so_line=False passed explicitly — Odoo accepts this directly, no
-clear-after-create workaround needed, and unpaid lines contribute zero to
-the mapped order line's delivered quantity. 0.6 next (the internal
-project).
+Current status: 0.1–0.6 done. Internal project needed zero configuration
+— project id 1 ('Internal') already had allow_billable=false, no
+customer, no sale line, no employee mapping, and a fresh line on it
+correctly lands so_line=False / non_billable. INTERNAL_PROJECT_ID=1 for
+the eventual .env (Appendix A). 0.7 next — now just the two
+originally-planned Studio fields (default_project_field,
+app_entry_id_field), since 0.4 dropped the date-pair requirement.
 
 ## Ground rules (non-negotiable — from `docs/implementation-plan.md`)
 
