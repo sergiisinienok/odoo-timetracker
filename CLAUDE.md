@@ -28,12 +28,11 @@ Phase 2.1: this instance has no company-level timesheet fallback field —
 `docs/decisions/0003-no-company-validated-through-field.md` before
 implementing `resolve_period_state()`.
 
-Current status: 0.1–0.8 done. Integration user confirmed able to create,
-update, and delete timesheet lines for employees other than itself —
-6/6 operations, no AccessError (already informally exercised in 0.2/0.5,
-now formally proven in its own probe). 0.9 next — flat-rate mode on the
-same project, the last Odoo-config step before 0.10 (licensing question,
-non-blocking) and the Phase 0 gate review.
+Current status: 0.1–0.9 done. Both billing modes confirmed working
+through the identical assignment mechanism — a third employee's
+fixed-price line shows billable_fixed timesheets that don't move any of
+the real invoicing fields. Only 0.10 (licensing question — human,
+non-blocking) and the Phase 0 gate review remain before Phase 1.
 
 ## Ground rules (non-negotiable — from `docs/implementation-plan.md`)
 
@@ -109,6 +108,12 @@ they don't get rediscovered every session.
   Set via Technical Settings, UI-confirmed only. Revisit before Phase 3
   (or when data volume actually matters) to confirm the real Postgres
   index exists, not just the metadata flag.
+- **`sale.order.line`'s `_at_date`-suffixed fields (amount_to_invoice_at_date,
+  qty_invoiced_at_date, etc.) are misleading when read plainly** — they
+  appear to need a specific date passed via the read context, and
+  without it can compute values that don't match the real invoicing
+  fields at all (0006). Don't use them for anything factual; stick to
+  the properly `monetary`-typed fields.
 
 ## Repo layout
 
