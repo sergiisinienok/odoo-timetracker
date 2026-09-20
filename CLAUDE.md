@@ -28,13 +28,12 @@ Phase 2.1: this instance has no company-level timesheet fallback field —
 `docs/decisions/0003-no-company-validated-through-field.md` before
 implementing `resolve_period_state()`.
 
-Current status: 0.1–0.7 done. Studio fields confirmed:
-default_project_field = x_studio_default_project (hr.employee),
-app_entry_id_field = x_studio_timetracking_app_entry_id
-(account.analytic.line, indexed and stored — UI-confirmed, see quirks).
-0.8 next — prove the integration user can write another employee's
-timesheet lines. Largely already exercised in passing during 0.2/0.5's
-test-data scripts; 0.8 formalizes it as its own named probe.
+Current status: 0.1–0.8 done. Integration user confirmed able to create,
+update, and delete timesheet lines for employees other than itself —
+6/6 operations, no AccessError (already informally exercised in 0.2/0.5,
+now formally proven in its own probe). 0.9 next — flat-rate mode on the
+same project, the last Odoo-config step before 0.10 (licensing question,
+non-blocking) and the Phase 0 gate review.
 
 ## Ground rules (non-negotiable — from `docs/implementation-plan.md`)
 
