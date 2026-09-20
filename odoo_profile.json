@@ -14,5 +14,7 @@
   "pricelist_item_price_field": "fixed_price",
   "assignment_start_source": null,
   "assignment_end_source": null,
-  "unpaid_recipe": "create() with so_line=False passed explicitly"
+  "unpaid_recipe": "create() with so_line=False passed explicitly",
+  "default_project_field": "x_studio_default_project",
+  "app_entry_id_field": "x_studio_timetracking_app_entry_id"
 }

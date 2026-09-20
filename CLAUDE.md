@@ -28,13 +28,13 @@ Phase 2.1: this instance has no company-level timesheet fallback field —
 `docs/decisions/0003-no-company-validated-through-field.md` before
 implementing `resolve_period_state()`.
 
-Current status: 0.1–0.6 done. Internal project needed zero configuration
-— project id 1 ('Internal') already had allow_billable=false, no
-customer, no sale line, no employee mapping, and a fresh line on it
-correctly lands so_line=False / non_billable. INTERNAL_PROJECT_ID=1 for
-the eventual .env (Appendix A). 0.7 next — now just the two
-originally-planned Studio fields (default_project_field,
-app_entry_id_field), since 0.4 dropped the date-pair requirement.
+Current status: 0.1–0.7 done. Studio fields confirmed:
+default_project_field = x_studio_default_project (hr.employee),
+app_entry_id_field = x_studio_timetracking_app_entry_id
+(account.analytic.line, indexed and stored — UI-confirmed, see quirks).
+0.8 next — prove the integration user can write another employee's
+timesheet lines. Largely already exercised in passing during 0.2/0.5's
+test-data scripts; 0.8 formalizes it as its own named probe.
 
 ## Ground rules (non-negotiable — from `docs/implementation-plan.md`)
 
@@ -87,8 +87,8 @@ they don't get rediscovered every session.
 - **Validated lines are writable and deletable over the API** — confirmed by
   direct test, not assumed. Matches the plan's own expectation: stock Odoo's
   validation is not enforcement, so the app has to be.
-- **The integration user needs Project and Sales access, not just
-  Timesheets.** - 0.1 only granted Timesheets Administrator; reading
+- **The integration user needs Project and Sales access, not just Timesheets.** -
+  0.1 only granted Timesheets Administrator; reading
   sale.order.line directly (first needed in 0.5) requires Project and/or
   Sales access too — both were still "No." Worth remembering when
   provisioning the real integration user on particlesg.odoo.com: grant
@@ -96,6 +96,20 @@ they don't get rediscovered every session.
   Documents Only" specifically — it scopes to orders where this user is
   the salesperson, which is wrong for a service account reading every
   client's orders.
+- **Trial API keys can expire independently of the account itself.**
+  ssinenok@gmail.com's original key from 0.1 stopped authenticating
+  (XML-RPC Fault 3, bare "Access Denied" — distinct from the detailed
+  Fault 4 permission errors seen elsewhere in this project) partway
+  through 0.7, despite the login and account working fine. Regenerating
+  it in Preferences → Account Security fixed it immediately. A script
+  that worked before now failing with a bare Fault 3, credentials
+  otherwise populated correctly, means check the key first.
+- **`x_studio_timetracking_app_entry_id`'s Indexed flag can't be
+  independently verified via the API** — `ir.model.fields` likely shares
+  the same Access Rights restriction as ir.model/ir.model.data (0001).
+  Set via Technical Settings, UI-confirmed only. Revisit before Phase 3
+  (or when data volume actually matters) to confirm the real Postgres
+  index exists, not just the metadata flag.
 
 ## Repo layout
 
