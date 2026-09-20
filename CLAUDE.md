@@ -27,6 +27,43 @@ re-running them, not rebuilding them.
 
 Next: Phase 1 (walking skeleton) — 1.1, scaffold and compose.
 
+### Current status
+
+- Phase: 1 — Walking skeleton
+- Last completed step: (none yet)
+- Next step: 1.1 — Scaffold and compose
+- Last commit: (none yet)
+
+## Git workflow for the implementation plan
+
+- One commit per plan step (1.1, 1.2, ... 1.6), never a partial step.
+- After running a step's Validate command, show me the actual output and
+  stop. Wait for my explicit go-ahead before committing — do not commit on
+  your own judgment that it passed, even if the output looks clean.
+- The commit body must contain the evidence: the Validate command and its
+  actual output, not just a claim that it was run.
+- Commit message: `Step 1.3: Google sign-in and employee resolution`
+  (step number + the step's Goal line, verbatim from the plan).
+- After I confirm a step, update the "Current status" block above (last
+  completed step, next step, last commit hash) as part of that same commit —
+  never a separate one. Status and evidence move together or not at all.
+- If validation surfaces a contradiction with the plan (ground rule 5), stop
+  before asking me to confirm anything. Write it under docs/decisions/ first,
+  then bring both the contradiction and the step to me together.
+- Never amend or squash an earlier step's commit to absorb a later fix; a fix
+  is a new commit, same confirm-then-commit-with-evidence rule, that says
+  which step it corrects.
+
+Commit body shape:
+
+    Step 1.3: A signed-in employee is an hr.employee id, or they are not signed in.
+
+    Validate:
+      pytest api/tests/unit/test_auth.py api/tests/odoo/test_employee_resolution.py -v
+
+    Output:
+      <actual passing output, pasted>
+
 ## Ground rules (non-negotiable — from `docs/implementation-plan.md`)
 
 1. **Never assume an Odoo field name.** Confirm it via a probe against the
