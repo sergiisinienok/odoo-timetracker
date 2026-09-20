@@ -774,7 +774,7 @@ Checked against upstream release and support schedules on 6 Sep 2026. The select
 | Node.js | **24 LTS**, build-time only | Active LTS, EOL 30 Apr 2028; enters maintenance 20 Oct 2026. Node 26 is promoted to LTS in Oct 2026, and from 26 onward Node moves to one release a year with every release becoming LTS. Move to 26 after it is promoted — a one-line Dockerfile change, low risk because Node never runs in production here: Caddy serves a static build. |
 | Vite | **8.x** | 8.0 shipped Mar 2026 with Rolldown replacing esbuild and Rollup. Requires Node 20.19+ or 22.12+. |
 | React | **19.2.x** | React publishes no LTS and no EOL dates; the supported line is simply the latest minor. No React 20 announced. The react-server-dom-* advisories from early 2026 do not apply — this is a plain SPA with no RSC. |
-| TypeScript | **latest 5.x**, pinned | |
+| TypeScript | **7.0.2**, pinned | Updated during step 1.1 from this doc's original "latest 5.x" guidance: by the time of scaffolding (Sep 2026) the 5.x line had topped out at 5.9.3 and the actual latest was a new major, 7.x (6 was skipped — this is the `tsgo` native-Go-port compiler under the same `typescript` package name, not a routine minor). Confirmed compatible with `tsc -b` project builds and the Vite/React setup before adopting. |
 
 ### Odoo, which is the one we do not control
 

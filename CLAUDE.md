@@ -25,14 +25,15 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 1 (walking skeleton) — 1.1, scaffold and compose.
+Next: Phase 1 (walking skeleton) — 1.2, the Odoo client.
 
 ### Current status
 
 - Phase: 1 — Walking skeleton
-- Last completed step: (none yet)
-- Next step: 1.1 — Scaffold and compose
-- Last commit: (none yet)
+- Last completed step: 1.1 — Scaffold and compose
+- Next step: 1.2 — The Odoo client
+- Last commit: this commit (`git log -1` — amending to embed a literal hash
+  here just changes the hash, so this field names the step instead)
 
 ## Git workflow for the implementation plan
 

@@ -1,0 +1,80 @@
+services:
+  db:
+    image: postgres@sha256:86c951e05bf56c93d95d397747fb8820ac76cc3bedb78f43abd83eedbe3666ae # postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tti
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: tti
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    # Postgres 18 images store data under a version-specific subdirectory of
+    # /var/lib/postgresql itself now, not .../data — see
+    # https://github.com/docker-library/postgres/pull/1259
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tti -d tti"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://tti:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@db:5432/tti
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=3).status==200 else 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  worker:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://tti:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@db:5432/tti
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: ["python", "-m", "tti.worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: web
+      dockerfile: Dockerfile
+    restart: "no"
+    volumes:
+      - web-dist:/dist
+
+  caddy:
+    image: caddy@sha256:c802bf2721a427e961b9fd6a194c3888a180de9990b43f8530a02bd6be017e17 # caddy:2.11-alpine
+    restart: unless-stopped
+    environment:
+      CADDY_ADDRESS: ${CADDY_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - web-dist:/srv/web:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:
+  web-dist:

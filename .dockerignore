@@ -1,0 +1,13 @@
+.git/
+.env
+*.env.local
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/node_modules/
+**/dist/
+**/.vite/
+.codacy/
+.DS_Store
+tools/
+docs/

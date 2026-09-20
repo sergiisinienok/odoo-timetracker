@@ -1,0 +1,15 @@
+# Defaults to plain HTTP on :80 for local dev (see CADDY_ADDRESS in
+# docker-compose.yml). Set CADDY_ADDRESS to the real domain in production to
+# get automatic HTTPS from Caddy instead.
+{$CADDY_ADDRESS:80} {
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+}
