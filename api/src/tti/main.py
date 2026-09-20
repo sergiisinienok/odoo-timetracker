@@ -4,12 +4,12 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TypedDict
 
-import httpx
 from fastapi import FastAPI
 
 from tti.config import OdooProfile, Settings
 from tti.logging import configure_logging
-from tti.odoo.version_check import get_odoo_version
+from tti.odoo.client import OdooClient
+from tti.odoo.errors import OdooError
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class AppState(TypedDict):
     settings: Settings
     profile: OdooProfile | None
-    http_client: httpx.AsyncClient
+    odoo: OdooClient
 
 
 @asynccontextmanager
@@ -27,9 +27,22 @@ async def lifespan(app: FastAPI):
     profile = OdooProfile.load(settings.profile_path)
     if profile is None:
         logger.warning("odoo_profile.json not found", extra={"path": str(settings.profile_path)})
-    async with httpx.AsyncClient() as http_client:
-        app.state.app_state = AppState(settings=settings, profile=profile, http_client=http_client)
+
+    odoo = OdooClient(settings.odoo_url, settings.odoo_db, settings.odoo_user, settings.odoo_key)
+    try:
+        await odoo.authenticate()
+    except OdooError:
+        # A transient Odoo outage at boot shouldn't stop the container from
+        # starting — healthz will honestly report "unreachable" until a live
+        # call succeeds. Bad credentials look the same at this point; there's
+        # no way to tell them apart without trying again.
+        logger.warning("odoo authentication failed at startup", exc_info=True)
+
+    app.state.app_state = AppState(settings=settings, profile=profile, odoo=odoo)
+    try:
         yield
+    finally:
+        await odoo.aclose()
 
 
 app = FastAPI(title="Odoo Time Tracker API", lifespan=lifespan)
@@ -38,9 +51,14 @@ app = FastAPI(title="Odoo Time Tracker API", lifespan=lifespan)
 @app.get("/healthz")
 async def healthz() -> dict[str, object]:
     state: AppState = app.state.app_state
-    settings, profile, http_client = state["settings"], state["profile"], state["http_client"]
+    profile, odoo = state["profile"], state["odoo"]
 
-    odoo_version = await get_odoo_version(http_client, settings.odoo_url)
+    try:
+        odoo_version = await odoo.get_version()
+    except OdooError:
+        logger.warning("odoo unreachable during health check", exc_info=True)
+        odoo_version = None
+
     reachable = odoo_version is not None
     version_matches_profile = bool(
         profile is not None and odoo_version is not None and odoo_version == profile.odoo_version

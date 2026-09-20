@@ -23,12 +23,13 @@ packages = ["src/tti"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "odoo: hits the live Odoo sandbox, not run by default",
+    "odoo: hits the live Odoo sandbox — run explicitly (pytest tests/odoo/...), not part of a plain `pytest` fast-unit-only run",
 ]
-addopts = "-m 'not odoo'"
+asyncio_mode = "auto"
 
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "python-dotenv>=1.2.3",
 ]
