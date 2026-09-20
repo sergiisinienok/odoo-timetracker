@@ -14,25 +14,18 @@ Odoo is the only record — no second database, no sync job.
 
 ## Where we are
 
-**Phase 0 — Odoo foundation.** Nothing past this phase gets built until
-`odoo_profile.json` is complete and every value in it is probe-derived, not
-guessed. Current status: **0.1 and 0.2 done** — `odoo_profile.json` fully
-populated for both (`validation_field`, `employee_validated_through`,
-`company_validated_through`, `readonly_is_user_relative`,
-`validated_line_writable`/`validated_line_deletable` all confirmed). **0.3
-next** (service products, both invoicing modes).
+Current status: **Phase 0 complete** — gate reviewed and passed (7/8
+clean, item 7 — assignment dates — resolved by explicit owner decision:
+enforcement dropped, see decisions/0005). Full gate review:
+docs/phase-0-gate-review.md.
 
-One outstanding forward-flag from 0.2, not blocking but worth knowing before
-Phase 2.1: this instance has no company-level timesheet fallback field —
-`company_validated_through` is `null`. See
-`docs/decisions/0003-no-company-validated-through-field.md` before
-implementing `resolve_period_state()`.
+**Before trusting any of this against production:** everything was
+probed against the trial (edu-timetracking.odoo.com), not
+particlesg.odoo.com. Re-run the full probe suite against the real
+sandbox first — every script already exists in tools/, this is
+re-running them, not rebuilding them.
 
-Current status: 0.1–0.9 done. Both billing modes confirmed working
-through the identical assignment mechanism — a third employee's
-fixed-price line shows billable_fixed timesheets that don't move any of
-the real invoicing fields. Only 0.10 (licensing question — human,
-non-blocking) and the Phase 0 gate review remain before Phase 1.
+Next: Phase 1 (walking skeleton) — 1.1, scaffold and compose.
 
 ## Ground rules (non-negotiable — from `docs/implementation-plan.md`)
 
