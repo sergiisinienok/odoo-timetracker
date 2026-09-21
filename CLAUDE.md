@@ -14,25 +14,25 @@ Odoo is the only record — no second database, no sync job.
 
 ## Where we are
 
-Current status: **Phase 0 complete** — gate reviewed and passed (7/8
-clean, item 7 — assignment dates — resolved by explicit owner decision:
-enforcement dropped, see decisions/0005). Full gate review:
-docs/phase-0-gate-review.md.
+Current status: **Phase 1 complete** — gate reviewed and passed (4/5
+clean, item 5 — the Odoo error taxonomy's `OdooUncertain` case — accepted
+and deferred to Phase 2, where the outbox gives it a real caller to test
+against). Full gate review: docs/phase-1-gate-review.md. Phase 0's own
+gate: docs/phase-0-gate-review.md.
 
 **Before trusting any of this against production:** everything was
-probed against the trial (edu-timetracking.odoo.com), not
+probed and built against the trial (edu-timetracking.odoo.com), not
 particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 1 gate review (all six steps, 1.1-1.6, complete).
+Next: Phase 2, step 2.1 — domain rules as pure functions.
 
 ### Current status
 
-- Phase: 1 — Walking skeleton
-- Last completed step: 1.6 — Minimal frontend
-- Next step: Phase 1 gate review (human), then Phase 2, step 2.1 —
-  domain rules as pure functions
+- Phase: 2 — The product
+- Last completed step: Phase 1 gate review (passed 4/5, item 5 deferred)
+- Next step: 2.1 — Domain rules as pure functions
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 
