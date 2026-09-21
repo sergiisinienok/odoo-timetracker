@@ -37,10 +37,13 @@ class CreatedEntry:
 
 
 class EntryService:
-    def __init__(self, odoo: OdooClient, profile: OdooProfile, assignments: AssignmentService) -> None:
+    def __init__(
+        self, odoo: OdooClient, profile: OdooProfile, assignments: AssignmentService, internal_project_id: int
+    ) -> None:
         self._odoo = odoo
         self._profile = profile
         self._assignments = assignments
+        self._internal_project_id = internal_project_id
 
     async def create_entry(
         self, *, employee_id: int, assignment_id: str, date: str, hours: float, note: str
@@ -70,7 +73,36 @@ class EntryService:
         }
         line_id = await self._odoo.execute_kw("account.analytic.line", "create", [vals])
 
-        return await self._read_back(line_id, assignment_id)
+        return await self._read_back(line_id)
+
+    async def list_for_employee_on_date(self, employee_id: int, date: str) -> list[CreatedEntry]:
+        records = await self._odoo.execute_kw(
+            "account.analytic.line",
+            "search_read",
+            [[("employee_id", "=", employee_id), ("date", "=", date)]],
+            {"fields": ["date", "unit_amount", "name", "project_id", "so_line"]},
+        )
+        return [self._to_entry(r) for r in records]
+
+    def _to_entry(self, record: dict) -> CreatedEntry:
+        project_id = record["project_id"][0]
+        so_line_id = record["so_line"][0] if record["so_line"] else None
+        if so_line_id is not None:
+            assignment_id = f"project:{project_id}:paid"
+        elif project_id == self._internal_project_id:
+            assignment_id = "internal"
+        else:
+            assignment_id = f"project:{project_id}:unpaid"
+
+        return CreatedEntry(
+            id=record["id"],
+            assignment_id=assignment_id,
+            date=record["date"],
+            hours=record["unit_amount"],
+            note=record["name"],
+            project_id=project_id,
+            so_line_id=so_line_id,
+        )
 
     async def _find_assignment(self, employee_id: int, assignment_id: str):
         assignments = await self._assignments.list_for_employee(employee_id)
@@ -79,19 +111,14 @@ class EntryService:
                 return a
         raise AssignmentNotHeld(f"employee {employee_id} does not hold assignment {assignment_id!r}")
 
-    async def _read_back(self, line_id: int, assignment_id: str) -> CreatedEntry:
+    async def _read_back(self, line_id: int) -> CreatedEntry:
+        # assignment_id isn't stored on the line — reconstruct it from
+        # so_line/project_id the same way _to_entry does for a listing.
+        # These always agree: it's the same identity scheme we just wrote.
         [record] = await self._odoo.execute_kw(
             "account.analytic.line",
             "read",
             [[line_id]],
             {"fields": ["date", "unit_amount", "name", "project_id", "so_line"]},
         )
-        return CreatedEntry(
-            id=record["id"],
-            assignment_id=assignment_id,
-            date=record["date"],
-            hours=record["unit_amount"],
-            note=record["name"],
-            project_id=record["project_id"][0],
-            so_line_id=record["so_line"][0] if record["so_line"] else None,
-        )
+        return self._to_entry(record)

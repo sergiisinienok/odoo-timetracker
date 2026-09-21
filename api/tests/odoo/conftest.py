@@ -32,4 +32,4 @@ def entry_service(odoo_client, assignment_service):
     settings = Settings.from_env()
     profile = OdooProfile.load(settings.profile_path)
     assert profile is not None, "odoo_profile.json must be present for these tests"
-    return EntryService(odoo_client, profile, assignment_service)
+    return EntryService(odoo_client, profile, assignment_service, settings.internal_project_id)

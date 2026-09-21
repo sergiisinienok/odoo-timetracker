@@ -15,6 +15,9 @@ node_modules/
 dist/
 .vite/
 *.tsbuildinfo
+test-results/
+playwright-report/
+blob-report/
 
 # Docker / data
 *.log

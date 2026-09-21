@@ -25,13 +25,14 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 1 (walking skeleton) — 1.6, minimal frontend.
+Next: Phase 1 gate review (all six steps, 1.1-1.6, complete).
 
 ### Current status
 
 - Phase: 1 — Walking skeleton
-- Last completed step: 1.5 — One entry, written through
-- Next step: 1.6 — Minimal frontend
+- Last completed step: 1.6 — Minimal frontend
+- Next step: Phase 1 gate review (human), then Phase 2, step 2.1 —
+  domain rules as pure functions
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 

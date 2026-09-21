@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
         AssignmentService(odoo, profile, settings.internal_project_id) if profile is not None else None
     )
     entry_service = (
-        EntryService(odoo, profile, assignment_service)
+        EntryService(odoo, profile, assignment_service, settings.internal_project_id)
         if profile is not None and assignment_service is not None
         else None
     )
