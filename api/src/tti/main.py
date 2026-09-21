@@ -9,11 +9,13 @@ from fastapi import FastAPI
 from tti.assignments.service import AssignmentService
 from tti.auth.employees import EmployeeResolver
 from tti.config import OdooProfile, Settings
+from tti.entries.service import EntryService
 from tti.logging import configure_logging
 from tti.odoo.client import OdooClient
 from tti.odoo.errors import OdooError
 from tti.routes.assignments import router as assignments_router
 from tti.routes.auth import router as auth_router
+from tti.routes.entries import router as entries_router
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,7 @@ class AppState(TypedDict):
     odoo: OdooClient
     employee_resolver: EmployeeResolver
     assignment_service: AssignmentService | None
+    entry_service: EntryService | None
 
 
 @asynccontextmanager
@@ -48,6 +51,11 @@ async def lifespan(app: FastAPI):
     assignment_service = (
         AssignmentService(odoo, profile, settings.internal_project_id) if profile is not None else None
     )
+    entry_service = (
+        EntryService(odoo, profile, assignment_service)
+        if profile is not None and assignment_service is not None
+        else None
+    )
 
     app.state.app_state = AppState(
         settings=settings,
@@ -55,6 +63,7 @@ async def lifespan(app: FastAPI):
         odoo=odoo,
         employee_resolver=employee_resolver,
         assignment_service=assignment_service,
+        entry_service=entry_service,
     )
     try:
         yield
@@ -65,6 +74,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Odoo Time Tracker API", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(assignments_router)
+app.include_router(entries_router)
 
 
 @app.get("/healthz")

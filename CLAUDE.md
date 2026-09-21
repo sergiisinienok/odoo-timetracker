@@ -25,13 +25,13 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 1 (walking skeleton) — 1.5, one entry written through.
+Next: Phase 1 (walking skeleton) — 1.6, minimal frontend.
 
 ### Current status
 
 - Phase: 1 — Walking skeleton
-- Last completed step: 1.4 — Assignments, read live from Odoo
-- Next step: 1.5 — One entry, written through
+- Last completed step: 1.5 — One entry, written through
+- Next step: 1.6 — Minimal frontend
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 
