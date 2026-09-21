@@ -19,6 +19,11 @@ class Settings:
     odoo_user: str
     odoo_key: str
     database_url: str
+    google_client_id: str
+    google_client_secret: str
+    google_hosted_domain: str
+    session_secret: str
+    public_base_url: str
     log_level: str = "INFO"
     profile_path: Path = _REPO_ROOT_PROFILE
 
@@ -30,6 +35,11 @@ class Settings:
             odoo_user=os.environ["ODOO_USER"],
             odoo_key=os.environ["ODOO_KEY"],
             database_url=os.environ["DATABASE_URL"],
+            google_client_id=os.environ["GOOGLE_CLIENT_ID"],
+            google_client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
+            google_hosted_domain=os.environ["GOOGLE_HOSTED_DOMAIN"],
+            session_secret=os.environ["SESSION_SECRET"],
+            public_base_url=os.environ.get("PUBLIC_BASE_URL", "http://localhost"),
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
             profile_path=Path(os.environ.get("ODOO_PROFILE_PATH", str(_REPO_ROOT_PROFILE))),
         )

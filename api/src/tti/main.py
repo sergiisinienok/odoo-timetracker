@@ -6,10 +6,12 @@ from typing import TypedDict
 
 from fastapi import FastAPI
 
+from tti.auth.employees import EmployeeResolver
 from tti.config import OdooProfile, Settings
 from tti.logging import configure_logging
 from tti.odoo.client import OdooClient
 from tti.odoo.errors import OdooError
+from tti.routes.auth import router as auth_router
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +20,7 @@ class AppState(TypedDict):
     settings: Settings
     profile: OdooProfile | None
     odoo: OdooClient
+    employee_resolver: EmployeeResolver
 
 
 @asynccontextmanager
@@ -38,7 +41,11 @@ async def lifespan(app: FastAPI):
         # no way to tell them apart without trying again.
         logger.warning("odoo authentication failed at startup", exc_info=True)
 
-    app.state.app_state = AppState(settings=settings, profile=profile, odoo=odoo)
+    employee_resolver = EmployeeResolver(odoo)
+
+    app.state.app_state = AppState(
+        settings=settings, profile=profile, odoo=odoo, employee_resolver=employee_resolver
+    )
     try:
         yield
     finally:
@@ -46,6 +53,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Odoo Time Tracker API", lifespan=lifespan)
+app.include_router(auth_router)
 
 
 @app.get("/healthz")

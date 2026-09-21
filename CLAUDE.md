@@ -25,13 +25,13 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 1 (walking skeleton) — 1.3, Google sign-in and employee resolution.
+Next: Phase 1 (walking skeleton) — 1.4, assignments read live from Odoo.
 
 ### Current status
 
 - Phase: 1 — Walking skeleton
-- Last completed step: 1.2 — The Odoo client
-- Next step: 1.3 — Google sign-in and employee resolution
+- Last completed step: 1.3 — Google sign-in and employee resolution
+- Next step: 1.4 — Assignments, read live from Odoo
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 
@@ -185,6 +185,30 @@ python3 tools/p0s02-probe_validated_line_lock.py <line id>       # write/unlink 
 Run scripts without `| head` until you've confirmed every section still
 completes cleanly — Odoo 19 has already broken a mid-script assumption once
 without erroring loudly until that point in the output.
+
+## Running the app (Phase 1)
+
+```bash
+docker compose up -d              # api, worker, web (one-shot build), db, caddy
+curl http://localhost/api/healthz | jq .
+open http://localhost/
+docker compose down -v            # full reset, including the Postgres volume
+```
+
+This machine has no Docker Desktop — it uses **Podman** with Docker-CLI
+compatibility (`DOCKER_HOST` in `~/.zshenv`, machine set to **rootful** so
+Caddy can bind 80/443). `docker`/`docker compose` work unmodified; see the
+step 1.1 commit for the setup if it needs redoing on another machine.
+
+**oh-my-zsh's `dotenv` plugin quirk:** this shell auto-sources `.env` on
+every `cd` into the repo (the `dotenv` plugin). If `.env` gets edited after
+a shell was already sitting in this directory, that shell can be carrying
+stale exported values (observed: an empty `POSTGRES_PASSWORD`/`DATABASE_URL`
+persisting long after `.env` was fixed, silently overriding
+`docker compose`'s own `.env` loading, which resolves values correctly).
+If `docker compose` complains a variable is missing when `.env` plainly has
+it: `unset POSTGRES_PASSWORD DATABASE_URL` (or whichever variable) before
+the command, in the same shell invocation.
 
 ## Commit hygiene
 

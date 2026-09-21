@@ -682,7 +682,7 @@ ODOO_KEY=
 # Google
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-GOOGLE_HOSTED_DOMAIN=particles.global
+GOOGLE_HOSTED_DOMAIN=particlesglobal.com
 
 # App
 SESSION_SECRET=
@@ -696,6 +696,8 @@ DATABASE_URL=postgresql+psycopg://tti:${POSTGRES_PASSWORD}@db:5432/tti
 ```
 
 `DAILY_HOUR_CAP` is an environment variable because the brief makes raising it an ops action. Changing it is a deploy, which is the right amount of friction.
+
+`GOOGLE_HOSTED_DOMAIN` above was corrected during step 1.3 — see `docs/decisions/0007-google-hosted-domain.md`. The original guess, `particles.global`, disagreed with every real `hr.employee.work_email` in the live trial.
 
 ## Appendix B — API surface
 
