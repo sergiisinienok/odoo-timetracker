@@ -25,13 +25,13 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 1 (walking skeleton) — 1.4, assignments read live from Odoo.
+Next: Phase 1 (walking skeleton) — 1.5, one entry written through.
 
 ### Current status
 
 - Phase: 1 — Walking skeleton
-- Last completed step: 1.3 — Google sign-in and employee resolution
-- Next step: 1.4 — Assignments, read live from Odoo
+- Last completed step: 1.4 — Assignments, read live from Odoo
+- Next step: 1.5 — One entry, written through
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 
@@ -96,6 +96,25 @@ they don't get rediscovered every session.
   fields=["display_name"])` and match on the label instead of the technical
   group id. Not yet confirmed whether this is trial-specific — re-check
   against the real sandbox before relying on either approach long-term.
+- **`create()` over XML-RPC on this trial can return a list (`[3]`) instead
+  of a plain int**, seen on `project.project` (step 1.4) — passing that
+  straight into a following `read()`/`unlink()` call crashes deep in
+  Odoo's ORM (`TypeError: unhashable type: 'list'`), because it becomes a
+  list-of-a-list of ids. Confirmed this is XML-RPC-specific: the same
+  `create()` call over **JSON-RPC** — what the real app uses via
+  `OdooClient` — returns a plain int, both for `hr.employee` and
+  `project.project`. Only matters for throwaway `tools/` probe scripts
+  written with `xmlrpc.client`; doesn't affect app code. If a probe's
+  `create()` result looks wrong, check whether it's already a list before
+  re-wrapping it.
+- **`project.project.partner_id` gets silently reset to `False` if written
+  *before* a `project.sale.line.employee.map` row exists on that project**,
+  even though the write reads back correctly right after — reproducible,
+  undiagnosed (step 1.4, building a second-project-same-customer test
+  fixture). Write it *after* creating the mapping row instead and it
+  sticks reliably. Only matters for test fixtures that build a project
+  from scratch via the API; real projects are created through the UI
+  (sales order confirmation), which evidently doesn't hit this ordering.
 - **Odoo 19 field renames** vs. what older docs/training data assume:
   `res.users.group_ids` (not `groups_id`); `res.groups` has no
   `category_id` — use `display_name` (includes the category prefix, e.g.
