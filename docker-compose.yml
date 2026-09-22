@@ -11,6 +11,8 @@ services:
     # Postgres 18 images store data under a version-specific subdirectory of
     # /var/lib/postgresql itself now, not .../data — see
     # https://github.com/docker-library/postgres/pull/1259
+    ports:
+      - "5432:5432" # dev convenience: lets `uv run pytest` on the host reach it directly
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tti -d tti"]
       interval: 5s

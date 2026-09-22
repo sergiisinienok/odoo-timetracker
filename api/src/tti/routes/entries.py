@@ -4,6 +4,7 @@ import datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from tti.entries.service import CreatedEntry
@@ -25,23 +26,26 @@ _ERROR_STATUS = {
     "invalid_increment": 400,
     "assignment_not_valid_on_date": 400,
     "period_locked": 409,
+    "odoo_rejected": 422,
 }
 
 
 def _serialize(entry: CreatedEntry) -> dict[str, object]:
     return {
         "id": entry.id,
+        "outbox_id": entry.outbox_id,
         "assignment_id": entry.assignment_id,
         "date": entry.date,
         "hours": entry.hours,
         "note": entry.note,
         "project_id": entry.project_id,
         "so_line_id": entry.so_line_id,
+        "sync_state": entry.sync_state,
     }
 
 
-@router.post("/entries", status_code=201)
-async def create_entry(request: Request, body: CreateEntryRequest) -> dict[str, object]:
+@router.post("/entries")
+async def create_entry(request: Request, body: CreateEntryRequest) -> JSONResponse:
     session = await get_current_session(request)
     service = request.app.state.app_state["entry_service"]
     if service is None:
@@ -59,7 +63,12 @@ async def create_entry(request: Request, body: CreateEntryRequest) -> dict[str, 
         status = _ERROR_STATUS.get(exc.code, 400)
         raise HTTPException(status_code=status, detail={"error": exc.code, "message": str(exc)}) from exc
 
-    return _serialize(entry)
+    # 201 synced, 202 pending — Appendix B. A pending write isn't a
+    # rejection, it's the outbox's whole reason to exist: the request
+    # succeeded from the employee's point of view, Odoo just hasn't
+    # confirmed it yet.
+    status_code = 201 if entry.sync_state == "synced" else 202
+    return JSONResponse(status_code=status_code, content=_serialize(entry))
 
 
 @router.get("/entries")

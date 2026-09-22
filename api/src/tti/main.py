@@ -4,15 +4,18 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TypedDict
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from tti.assignments.service import AssignmentService
 from tti.auth.employees import EmployeeResolver
 from tti.config import OdooProfile, Settings
+from tti.db.session import make_session_factory
 from tti.entries.service import EntryService
 from tti.logging import configure_logging
 from tti.odoo.client import OdooClient
-from tti.odoo.errors import OdooError
+from tti.odoo.errors import OdooError, OdooRejected
+from tti.outbox.service import OutboxService
 from tti.periods.service import PeriodService
 from tti.routes.assignments import router as assignments_router
 from tti.routes.auth import router as auth_router
@@ -29,6 +32,7 @@ class AppState(TypedDict):
     employee_resolver: EmployeeResolver
     assignment_service: AssignmentService | None
     period_service: PeriodService | None
+    outbox_service: OutboxService | None
     entry_service: EntryService | None
 
 
@@ -55,9 +59,18 @@ async def lifespan(app: FastAPI):
         AssignmentService(odoo, profile, settings.internal_project_id) if profile is not None else None
     )
     period_service = PeriodService(odoo, profile) if profile is not None else None
+    session_factory = make_session_factory(settings.database_url)
+    outbox_service = (
+        OutboxService(session_factory, odoo, profile, period_service)
+        if profile is not None and period_service is not None
+        else None
+    )
     entry_service = (
-        EntryService(odoo, profile, assignment_service, period_service, settings.internal_project_id)
-        if profile is not None and assignment_service is not None and period_service is not None
+        EntryService(odoo, profile, assignment_service, period_service, outbox_service, settings.internal_project_id)
+        if profile is not None
+        and assignment_service is not None
+        and period_service is not None
+        and outbox_service is not None
         else None
     )
 
@@ -68,6 +81,7 @@ async def lifespan(app: FastAPI):
         employee_resolver=employee_resolver,
         assignment_service=assignment_service,
         period_service=period_service,
+        outbox_service=outbox_service,
         entry_service=entry_service,
     )
     try:
@@ -81,6 +95,21 @@ app.include_router(auth_router)
 app.include_router(assignments_router)
 app.include_router(periods_router)
 app.include_router(entries_router)
+
+
+@app.exception_handler(OdooError)
+async def odoo_error_handler(request: Request, exc: OdooError) -> JSONResponse:
+    # A safety net, not the primary path: POST /entries's own write already
+    # goes through the outbox (OdooUnavailable/Uncertain there means 202
+    # pending, never an uncaught exception). This catches OdooError from
+    # the *reads* every route needs before or instead of a write —
+    # assignments, periods, the pre-write assignment/period-lock checks in
+    # entries/service.py — none of which have anywhere else to queue to;
+    # there's nothing to enqueue if we can't even read what to write.
+    logger.warning("unhandled OdooError reached the route layer", exc_info=True)
+    if isinstance(exc, OdooRejected):
+        return JSONResponse(status_code=422, content={"error": "odoo_rejected", "message": str(exc)})
+    return JSONResponse(status_code=503, content={"error": "odoo_unavailable", "message": str(exc)})
 
 
 @app.get("/healthz")

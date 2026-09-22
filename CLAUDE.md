@@ -26,13 +26,13 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 2, step 2.3 — the outbox and worker.
+Next: Phase 2, step 2.4 — full entry lifecycle.
 
 ### Current status
 
 - Phase: 2 — The product
-- Last completed step: 2.2 — Period state service
-- Next step: 2.3 — The outbox and worker
+- Last completed step: 2.3 — The outbox and worker
+- Next step: 2.4 — Full entry lifecycle
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 
@@ -206,7 +206,7 @@ Run scripts without `| head` until you've confirmed every section still
 completes cleanly — Odoo 19 has already broken a mid-script assumption once
 without erroring loudly until that point in the output.
 
-## Running the app (Phase 1)
+## Running the app (Phase 1+)
 
 ```bash
 docker compose up -d              # api, worker, web (one-shot build), db, caddy
@@ -214,6 +214,20 @@ curl http://localhost/api/healthz | jq .
 open http://localhost/
 docker compose down -v            # full reset, including the Postgres volume
 ```
+
+**No auto-migrate on startup yet** (step 2.3) — after any `down -v` (or a
+genuinely fresh DB volume), run the Alembic migration by hand before the
+outbox works:
+
+```bash
+cd api && set -a && source ../.env && set +a && \
+  export DATABASE_URL="postgresql+psycopg://tti:${POSTGRES_PASSWORD}@localhost:5432/tti" && \
+  uv run alembic upgrade head
+```
+
+(`db`'s port is published to the host — `docker-compose.yml` — so this runs
+from the host, not inside a container. Worth wiring into container startup
+before Phase 3 deployment; not done yet.)
 
 This machine has no Docker Desktop — it uses **Podman** with Docker-CLI
 compatibility (`DOCKER_HOST` in `~/.zshenv`, machine set to **rootful** so

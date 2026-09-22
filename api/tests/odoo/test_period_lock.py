@@ -1,7 +1,9 @@
 import datetime
 
 import pytest
+from sqlalchemy import delete
 
+from tti.outbox.models import OutboxRow
 from tti.periods.errors import PeriodLocked
 
 pytestmark = pytest.mark.odoo
@@ -46,7 +48,9 @@ async def test_create_in_a_validated_month_is_refused(entry_service, validated_t
         )
 
 
-async def test_create_in_the_following_month_still_works(odoo_client, entry_service, validated_through_prev_month):
+async def test_create_in_the_following_month_still_works(
+    odoo_client, entry_service, session_factory, validated_through_prev_month
+):
     entry = await entry_service.create_entry(
         employee_id=TM_EMPLOYEE_ID,
         assignment_id="internal",
@@ -58,6 +62,9 @@ async def test_create_in_the_following_month_still_works(odoo_client, entry_serv
         assert entry.date == _TODAY.isoformat()
     finally:
         await odoo_client.execute_kw("account.analytic.line", "unlink", [[entry.id]])
+        async with session_factory() as session:
+            await session.execute(delete(OutboxRow).where(OutboxRow.id == entry.outbox_id))
+            await session.commit()
 
 
 async def test_periods_listing_reflects_the_lock(period_service, validated_through_prev_month):

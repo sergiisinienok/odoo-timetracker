@@ -6,6 +6,9 @@ from sqlalchemy import pool
 
 from alembic import context
 
+from tti.db.base import Base
+from tti.outbox import models as outbox_models  # noqa: F401 — registers OutboxRow on Base.metadata
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -19,11 +22,7 @@ if config.config_file_name is not None:
 # same rule as api/src/tti/config.py.
 config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = None
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

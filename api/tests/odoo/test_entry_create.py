@@ -1,9 +1,11 @@
 import datetime
 
 import pytest
+from sqlalchemy import delete
 
 from tti.domain.errors import InvalidIncrement
 from tti.entries.errors import AssignmentNotHeld
+from tti.outbox.models import OutboxRow
 
 pytestmark = pytest.mark.odoo
 
@@ -13,11 +15,14 @@ TM_EMPLOYEE_ID = 1
 TODAY = datetime.date.today().isoformat()
 
 
-async def _cleanup(odoo_client, entry_id):
-    await odoo_client.execute_kw("account.analytic.line", "unlink", [[entry_id]])
+async def _cleanup(odoo_client, session_factory, entry):
+    await odoo_client.execute_kw("account.analytic.line", "unlink", [[entry.id]])
+    async with session_factory() as session:
+        await session.execute(delete(OutboxRow).where(OutboxRow.id == entry.outbox_id))
+        await session.commit()
 
 
-async def test_paid_entry_lands_with_correct_so_line(odoo_client, entry_service):
+async def test_paid_entry_lands_with_correct_so_line(odoo_client, entry_service, session_factory):
     entry = await entry_service.create_entry(
         employee_id=TM_EMPLOYEE_ID, assignment_id="project:2:paid", date=TODAY, hours=1.0, note="paid test"
     )
@@ -25,10 +30,10 @@ async def test_paid_entry_lands_with_correct_so_line(odoo_client, entry_service)
         assert entry.so_line_id == 1
         assert entry.project_id == 2
     finally:
-        await _cleanup(odoo_client, entry.id)
+        await _cleanup(odoo_client, session_factory, entry)
 
 
-async def test_unpaid_entry_stays_unpaid_after_a_subsequent_unrelated_write(odoo_client, entry_service):
+async def test_unpaid_entry_stays_unpaid_after_a_subsequent_unrelated_write(odoo_client, entry_service, session_factory):
     entry = await entry_service.create_entry(
         employee_id=TM_EMPLOYEE_ID, assignment_id="project:2:unpaid", date=TODAY, hours=1.0, note="unpaid test"
     )
@@ -43,10 +48,10 @@ async def test_unpaid_entry_stays_unpaid_after_a_subsequent_unrelated_write(odoo
         )
         assert record["so_line"] is False
     finally:
-        await _cleanup(odoo_client, entry.id)
+        await _cleanup(odoo_client, session_factory, entry)
 
 
-async def test_internal_entry_lands_on_the_internal_project(entry_service, odoo_client):
+async def test_internal_entry_lands_on_the_internal_project(entry_service, odoo_client, session_factory):
     entry = await entry_service.create_entry(
         employee_id=TM_EMPLOYEE_ID, assignment_id="internal", date=TODAY, hours=1.0, note="internal test"
     )
@@ -54,7 +59,7 @@ async def test_internal_entry_lands_on_the_internal_project(entry_service, odoo_
         assert entry.project_id == 1  # INTERNAL_PROJECT_ID
         assert entry.so_line_id is None
     finally:
-        await _cleanup(odoo_client, entry.id)
+        await _cleanup(odoo_client, session_factory, entry)
 
 
 async def test_assignment_not_held_is_refused(entry_service):
@@ -71,11 +76,11 @@ async def test_invalid_increment_is_refused(entry_service):
         )
 
 
-async def test_quarter_hour_increment_is_accepted(odoo_client, entry_service):
+async def test_quarter_hour_increment_is_accepted(odoo_client, entry_service, session_factory):
     entry = await entry_service.create_entry(
         employee_id=TM_EMPLOYEE_ID, assignment_id="project:2:paid", date=TODAY, hours=3.25, note=""
     )
     try:
         assert entry.hours == 3.25
     finally:
-        await _cleanup(odoo_client, entry.id)
+        await _cleanup(odoo_client, session_factory, entry)

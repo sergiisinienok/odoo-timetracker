@@ -4,8 +4,10 @@ import pytest
 
 from tti.assignments.service import AssignmentService
 from tti.config import OdooProfile, Settings
+from tti.db.session import make_session_factory
 from tti.entries.service import EntryService
 from tti.odoo.client import OdooClient
+from tti.outbox.service import OutboxService
 from tti.periods.service import PeriodService
 
 
@@ -37,8 +39,24 @@ def period_service(odoo_client):
 
 
 @pytest.fixture
-def entry_service(odoo_client, assignment_service, period_service):
+def session_factory():
+    settings = Settings.from_env()
+    return make_session_factory(settings.database_url)
+
+
+@pytest.fixture
+def outbox_service(odoo_client, period_service, session_factory):
     settings = Settings.from_env()
     profile = OdooProfile.load(settings.profile_path)
     assert profile is not None, "odoo_profile.json must be present for these tests"
-    return EntryService(odoo_client, profile, assignment_service, period_service, settings.internal_project_id)
+    return OutboxService(session_factory, odoo_client, profile, period_service)
+
+
+@pytest.fixture
+def entry_service(odoo_client, assignment_service, period_service, outbox_service):
+    settings = Settings.from_env()
+    profile = OdooProfile.load(settings.profile_path)
+    assert profile is not None, "odoo_profile.json must be present for these tests"
+    return EntryService(
+        odoo_client, profile, assignment_service, period_service, outbox_service, settings.internal_project_id
+    )
