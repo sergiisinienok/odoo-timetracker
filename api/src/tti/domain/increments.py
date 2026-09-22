@@ -1,13 +1,23 @@
-"""Pure rule: hours must be a positive multiple of 0.25 (step 1.5)."""
+"""Pure rule: hours must be a positive multiple of 0.25 (steps 1.5/2.1).
+
+Decimal, not float: a quarter-hour grid is exactly representable in
+decimal but not in binary floating point (0.25 itself is fine, but sums
+like 3.3 drift), so there's no epsilon-fudging needed the way there would
+be with float arithmetic — callers just need to construct the Decimal
+from a string/JSON-number representation, not from an existing float
+(`Decimal(str(hours))`, never `Decimal(hours)` if `hours` started as a
+float).
+"""
 
 from __future__ import annotations
 
-_QUARTER_HOUR_HUNDREDTHS = 25
+from decimal import Decimal
+
+from tti.domain.errors import InvalidIncrement
+
+_QUARTER_HOUR = Decimal("0.25")
 
 
-def is_valid_increment(hours: float) -> bool:
-    if hours <= 0:
-        return False
-    # Work in hundredths to sidestep float representation noise
-    # (3.3 * 100 == 330.00000000000006 in plain IEEE-754 arithmetic).
-    return round(hours * 100) % _QUARTER_HOUR_HUNDREDTHS == 0
+def validate_increment(hours: Decimal) -> None:
+    if hours <= 0 or hours % _QUARTER_HOUR != 0:
+        raise InvalidIncrement(f"{hours} is not a positive multiple of 0.25")

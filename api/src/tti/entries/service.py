@@ -16,12 +16,14 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import date as date_type
+from decimal import Decimal
 
 from tti.assignments.service import AssignmentService
 from tti.config import OdooProfile
-from tti.domain.increments import is_valid_increment
-from tti.domain.validity import is_date_within_validity
-from tti.entries.errors import AssignmentNotHeld, AssignmentNotValidOnDate, InvalidIncrement
+from tti.domain.increments import validate_increment
+from tti.domain.validity import validate_within_assignment
+from tti.entries.errors import AssignmentNotHeld
 from tti.odoo.client import OdooClient
 
 
@@ -48,13 +50,18 @@ class EntryService:
     async def create_entry(
         self, *, employee_id: int, assignment_id: str, date: str, hours: float, note: str
     ) -> CreatedEntry:
-        if not is_valid_increment(hours):
-            raise InvalidIncrement(f"{hours} is not a positive multiple of 0.25")
+        # Convert at the boundary: domain rules work in Decimal/date, the
+        # rest of this service and the API layer stay in the JSON-native
+        # str/float shapes. str(hours) first, never Decimal(hours) direct
+        # — see domain/increments.py's own note on why.
+        validate_increment(Decimal(str(hours)))
 
         assignment = await self._find_assignment(employee_id, assignment_id)
 
-        if not is_date_within_validity(date, assignment.start_date, assignment.end_date):
-            raise AssignmentNotValidOnDate(f"{date} is outside this assignment's validity window")
+        entry_date = date_type.fromisoformat(date)
+        start = date_type.fromisoformat(assignment.start_date) if assignment.start_date else None
+        end = date_type.fromisoformat(assignment.end_date) if assignment.end_date else None
+        validate_within_assignment(entry_date, start, end)
 
         # Paid gets the real sale order line; unpaid and internal both
         # write so_line=False explicitly — the unpaid_recipe confirmed in

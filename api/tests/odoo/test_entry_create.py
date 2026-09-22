@@ -2,7 +2,8 @@ import datetime
 
 import pytest
 
-from tti.entries.errors import AssignmentNotHeld, InvalidIncrement
+from tti.domain.errors import InvalidIncrement
+from tti.entries.errors import AssignmentNotHeld
 
 pytestmark = pytest.mark.odoo
 

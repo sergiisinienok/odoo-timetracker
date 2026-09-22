@@ -1,36 +1,51 @@
+from datetime import date
+from decimal import Decimal
+
 import pytest
 
-from tti.domain.increments import is_valid_increment
-from tti.domain.validity import is_date_within_validity
+from tti.domain.errors import AssignmentNotValidOnDate, InvalidIncrement
+from tti.domain.increments import validate_increment
+from tti.domain.validity import validate_within_assignment
 
 
 @pytest.mark.parametrize(
-    "hours,expected",
-    [
-        (3.25, True),
-        (0.25, True),
-        (8.0, True),
-        (3.3, False),
-        (0, False),
-        (-0.25, False),
-        (0.1, False),
-    ],
+    "hours",
+    [Decimal("3.25"), Decimal("0.25"), Decimal("8.0")],
 )
-def test_is_valid_increment(hours, expected):
-    assert is_valid_increment(hours) is expected
+def test_valid_increment_does_not_raise(hours):
+    validate_increment(hours)  # no exception
+
+
+@pytest.mark.parametrize(
+    "hours",
+    [Decimal("3.3"), Decimal("0"), Decimal("-0.25"), Decimal("0.1")],
+)
+def test_invalid_increment_raises(hours):
+    with pytest.raises(InvalidIncrement):
+        validate_increment(hours)
 
 
 def test_open_ended_assignment_accepts_any_date():
-    assert is_date_within_validity("2026-01-01", None, None) is True
+    validate_within_assignment(date(2026, 1, 1), None, None)  # no exception
 
 
 def test_date_before_start_is_rejected():
-    assert is_date_within_validity("2026-01-01", "2026-02-01", None) is False
+    with pytest.raises(AssignmentNotValidOnDate):
+        validate_within_assignment(date(2026, 1, 1), date(2026, 2, 1), None)
 
 
 def test_date_after_end_is_rejected():
-    assert is_date_within_validity("2026-03-01", None, "2026-02-01") is False
+    with pytest.raises(AssignmentNotValidOnDate):
+        validate_within_assignment(date(2026, 3, 1), None, date(2026, 2, 1))
 
 
 def test_date_within_window_is_accepted():
-    assert is_date_within_validity("2026-01-15", "2026-01-01", "2026-01-31") is True
+    validate_within_assignment(date(2026, 1, 15), date(2026, 1, 1), date(2026, 1, 31))  # no exception
+
+
+def test_date_exactly_on_start_is_accepted():
+    validate_within_assignment(date(2026, 1, 1), date(2026, 1, 1), None)  # no exception
+
+
+def test_date_exactly_on_end_is_accepted():
+    validate_within_assignment(date(2026, 1, 31), None, date(2026, 1, 31))  # no exception

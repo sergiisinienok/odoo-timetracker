@@ -6,8 +6,8 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from tti.entries.errors import EntryError
 from tti.entries.service import CreatedEntry
+from tti.errors import AppError
 from tti.routes.auth import get_current_session
 
 router = APIRouter()
@@ -54,7 +54,7 @@ async def create_entry(request: Request, body: CreateEntryRequest) -> dict[str, 
             hours=body.hours,
             note=body.note,
         )
-    except EntryError as exc:
+    except AppError as exc:
         status = _ERROR_STATUS.get(exc.code, 400)
         raise HTTPException(status_code=status, detail={"error": exc.code, "message": str(exc)}) from exc
 

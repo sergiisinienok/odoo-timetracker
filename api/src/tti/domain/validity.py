@@ -5,16 +5,19 @@ own spec) — currently *every* assignment, since
 assignment_start_source/assignment_end_source are null in
 odoo_profile.json, see
 docs/decisions/0005-no-assignment-validity-date-field.md. This still
-reads real start/end values when they're not None, so it needs no
+enforces real start/end values when they're not None, so it needs no
 changes if that profile ever gets populated.
 """
 
 from __future__ import annotations
 
+from datetime import date
 
-def is_date_within_validity(date: str, start: str | None, end: str | None) -> bool:
-    if start is not None and date < start:
-        return False
-    if end is not None and date > end:
-        return False
-    return True
+from tti.domain.errors import AssignmentNotValidOnDate
+
+
+def validate_within_assignment(entry_date: date, start: date | None, end: date | None) -> None:
+    if start is not None and entry_date < start:
+        raise AssignmentNotValidOnDate(f"{entry_date} is before this assignment's start date {start}")
+    if end is not None and entry_date > end:
+        raise AssignmentNotValidOnDate(f"{entry_date} is after this assignment's end date {end}")

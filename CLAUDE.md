@@ -26,13 +26,13 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 2, step 2.1 — domain rules as pure functions.
+Next: Phase 2, step 2.2 — period state service.
 
 ### Current status
 
 - Phase: 2 — The product
-- Last completed step: Phase 1 gate review (passed 4/5, item 5 deferred)
-- Next step: 2.1 — Domain rules as pure functions
+- Last completed step: 2.1 — Domain rules as pure functions
+- Next step: 2.2 — Period state service
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 
