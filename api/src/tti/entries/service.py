@@ -25,6 +25,8 @@ from tti.domain.increments import validate_increment
 from tti.domain.validity import validate_within_assignment
 from tti.entries.errors import AssignmentNotHeld
 from tti.odoo.client import OdooClient
+from tti.odoo.errors import OdooRejected
+from tti.periods.service import PeriodService
 
 
 @dataclass(frozen=True)
@@ -40,11 +42,17 @@ class CreatedEntry:
 
 class EntryService:
     def __init__(
-        self, odoo: OdooClient, profile: OdooProfile, assignments: AssignmentService, internal_project_id: int
+        self,
+        odoo: OdooClient,
+        profile: OdooProfile,
+        assignments: AssignmentService,
+        periods: PeriodService,
+        internal_project_id: int,
     ) -> None:
         self._odoo = odoo
         self._profile = profile
         self._assignments = assignments
+        self._periods = periods
         self._internal_project_id = internal_project_id
 
     async def create_entry(
@@ -63,6 +71,8 @@ class EntryService:
         end = date_type.fromisoformat(assignment.end_date) if assignment.end_date else None
         validate_within_assignment(entry_date, start, end)
 
+        await self._periods.guard(employee_id, entry_date)
+
         # Paid gets the real sale order line; unpaid and internal both
         # write so_line=False explicitly — the unpaid_recipe confirmed in
         # Phase 0 (odoo_profile.json: "create() with so_line=False passed
@@ -78,7 +88,15 @@ class EntryService:
             "so_line": so_line_id,
             self._profile.app_entry_id_field: str(uuid.uuid4()),
         }
-        line_id = await self._odoo.execute_kw("account.analytic.line", "create", [vals])
+        try:
+            line_id = await self._odoo.execute_kw("account.analytic.line", "create", [vals])
+        except OdooRejected:
+            # Odoo itself rejecting a write is a signal our cached
+            # validated-through date might be stale (an approver could
+            # have validated the month moments after our last read) —
+            # invalidate eagerly rather than waiting out the TTL.
+            self._periods.invalidate(employee_id)
+            raise
 
         return await self._read_back(line_id)
 

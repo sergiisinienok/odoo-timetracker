@@ -6,6 +6,7 @@ from tti.assignments.service import AssignmentService
 from tti.config import OdooProfile, Settings
 from tti.entries.service import EntryService
 from tti.odoo.client import OdooClient
+from tti.periods.service import PeriodService
 
 
 @pytest.fixture
@@ -28,8 +29,16 @@ def assignment_service(odoo_client):
 
 
 @pytest.fixture
-def entry_service(odoo_client, assignment_service):
+def period_service(odoo_client):
     settings = Settings.from_env()
     profile = OdooProfile.load(settings.profile_path)
     assert profile is not None, "odoo_profile.json must be present for these tests"
-    return EntryService(odoo_client, profile, assignment_service, settings.internal_project_id)
+    return PeriodService(odoo_client, profile)
+
+
+@pytest.fixture
+def entry_service(odoo_client, assignment_service, period_service):
+    settings = Settings.from_env()
+    profile = OdooProfile.load(settings.profile_path)
+    assert profile is not None, "odoo_profile.json must be present for these tests"
+    return EntryService(odoo_client, profile, assignment_service, period_service, settings.internal_project_id)

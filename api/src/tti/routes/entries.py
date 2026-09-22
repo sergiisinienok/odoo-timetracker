@@ -24,6 +24,7 @@ _ERROR_STATUS = {
     "assignment_not_held": 403,
     "invalid_increment": 400,
     "assignment_not_valid_on_date": 400,
+    "period_locked": 409,
 }
 
 

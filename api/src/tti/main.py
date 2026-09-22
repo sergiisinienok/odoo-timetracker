@@ -13,9 +13,11 @@ from tti.entries.service import EntryService
 from tti.logging import configure_logging
 from tti.odoo.client import OdooClient
 from tti.odoo.errors import OdooError
+from tti.periods.service import PeriodService
 from tti.routes.assignments import router as assignments_router
 from tti.routes.auth import router as auth_router
 from tti.routes.entries import router as entries_router
+from tti.routes.periods import router as periods_router
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,7 @@ class AppState(TypedDict):
     odoo: OdooClient
     employee_resolver: EmployeeResolver
     assignment_service: AssignmentService | None
+    period_service: PeriodService | None
     entry_service: EntryService | None
 
 
@@ -51,9 +54,10 @@ async def lifespan(app: FastAPI):
     assignment_service = (
         AssignmentService(odoo, profile, settings.internal_project_id) if profile is not None else None
     )
+    period_service = PeriodService(odoo, profile) if profile is not None else None
     entry_service = (
-        EntryService(odoo, profile, assignment_service, settings.internal_project_id)
-        if profile is not None and assignment_service is not None
+        EntryService(odoo, profile, assignment_service, period_service, settings.internal_project_id)
+        if profile is not None and assignment_service is not None and period_service is not None
         else None
     )
 
@@ -63,6 +67,7 @@ async def lifespan(app: FastAPI):
         odoo=odoo,
         employee_resolver=employee_resolver,
         assignment_service=assignment_service,
+        period_service=period_service,
         entry_service=entry_service,
     )
     try:
@@ -74,6 +79,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Odoo Time Tracker API", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(assignments_router)
+app.include_router(periods_router)
 app.include_router(entries_router)
 
 
