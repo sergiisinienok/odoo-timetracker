@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ class Settings:
     session_secret: str
     public_base_url: str
     internal_project_id: int
+    daily_hour_cap: Decimal
     log_level: str = "INFO"
     profile_path: Path = _REPO_ROOT_PROFILE
 
@@ -42,6 +44,7 @@ class Settings:
             session_secret=os.environ["SESSION_SECRET"],
             public_base_url=os.environ.get("PUBLIC_BASE_URL", "http://localhost"),
             internal_project_id=int(os.environ["INTERNAL_PROJECT_ID"]),
+            daily_hour_cap=Decimal(os.environ["DAILY_HOUR_CAP"]),
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
             profile_path=Path(os.environ.get("ODOO_PROFILE_PATH", str(_REPO_ROOT_PROFILE))),
         )

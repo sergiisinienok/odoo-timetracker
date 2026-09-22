@@ -66,7 +66,15 @@ async def lifespan(app: FastAPI):
         else None
     )
     entry_service = (
-        EntryService(odoo, profile, assignment_service, period_service, outbox_service, settings.internal_project_id)
+        EntryService(
+            odoo,
+            profile,
+            assignment_service,
+            period_service,
+            outbox_service,
+            settings.internal_project_id,
+            settings.daily_hour_cap,
+        )
         if profile is not None
         and assignment_service is not None
         and period_service is not None

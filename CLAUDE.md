@@ -26,13 +26,13 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 2, step 2.4 — full entry lifecycle.
+Next: Phase 2, step 2.5 — current period view.
 
 ### Current status
 
 - Phase: 2 — The product
-- Last completed step: 2.3 — The outbox and worker
-- Next step: 2.4 — Full entry lifecycle
+- Last completed step: 2.4 — Full entry lifecycle
+- Next step: 2.5 — Current period view
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 

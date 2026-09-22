@@ -23,18 +23,21 @@ async def odoo_client():
 
 
 @pytest.fixture
-def assignment_service(odoo_client):
+def profile():
     settings = Settings.from_env()
-    profile = OdooProfile.load(settings.profile_path)
-    assert profile is not None, "odoo_profile.json must be present for these tests"
+    p = OdooProfile.load(settings.profile_path)
+    assert p is not None, "odoo_profile.json must be present for these tests"
+    return p
+
+
+@pytest.fixture
+def assignment_service(odoo_client, profile):
+    settings = Settings.from_env()
     return AssignmentService(odoo_client, profile, settings.internal_project_id)
 
 
 @pytest.fixture
-def period_service(odoo_client):
-    settings = Settings.from_env()
-    profile = OdooProfile.load(settings.profile_path)
-    assert profile is not None, "odoo_profile.json must be present for these tests"
+def period_service(odoo_client, profile):
     return PeriodService(odoo_client, profile)
 
 
@@ -45,18 +48,19 @@ def session_factory():
 
 
 @pytest.fixture
-def outbox_service(odoo_client, period_service, session_factory):
-    settings = Settings.from_env()
-    profile = OdooProfile.load(settings.profile_path)
-    assert profile is not None, "odoo_profile.json must be present for these tests"
+def outbox_service(odoo_client, profile, period_service, session_factory):
     return OutboxService(session_factory, odoo_client, profile, period_service)
 
 
 @pytest.fixture
-def entry_service(odoo_client, assignment_service, period_service, outbox_service):
+def entry_service(odoo_client, profile, assignment_service, period_service, outbox_service):
     settings = Settings.from_env()
-    profile = OdooProfile.load(settings.profile_path)
-    assert profile is not None, "odoo_profile.json must be present for these tests"
     return EntryService(
-        odoo_client, profile, assignment_service, period_service, outbox_service, settings.internal_project_id
+        odoo_client,
+        profile,
+        assignment_service,
+        period_service,
+        outbox_service,
+        settings.internal_project_id,
+        settings.daily_hour_cap,
     )

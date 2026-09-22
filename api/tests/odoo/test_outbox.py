@@ -23,7 +23,6 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import delete, select
 
-from tti.config import OdooProfile, Settings
 from tti.odoo.client import OdooClient
 from tti.odoo.errors import OdooRejected, OdooUnavailable, OdooUncertain
 from tti.outbox.models import OutboxRow, OutboxState
@@ -43,14 +42,6 @@ def _unused_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
-
-
-@pytest.fixture
-def profile():
-    settings = Settings.from_env()
-    p = OdooProfile.load(settings.profile_path)
-    assert p is not None, "odoo_profile.json must be present for these tests"
-    return p
 
 
 @pytest.fixture(autouse=True)

@@ -18,13 +18,15 @@ type Assignment = {
 };
 
 type Entry = {
-  id: number;
+  id: number | null;
+  outbox_id: string | null;
   assignment_id: string;
   date: string;
   hours: number;
   note: string;
   project_id: number;
   so_line_id: number | null;
+  sync_state: "synced" | "pending" | "failed";
 };
 
 function todayLocal(): string {
@@ -51,8 +53,11 @@ export function App() {
   const [saving, setSaving] = useState(false);
 
   const loadEntries = useCallback(async () => {
+    // GET /api/entries returns the whole current month (step 2.4) — this
+    // screen only shows today's, so filter client-side.
     const { body } = await fetchJson<Entry[]>("/api/entries");
-    setEntries(body);
+    const today = todayLocal();
+    setEntries(body.filter((entry) => entry.date === today));
   }, []);
 
   useEffect(() => {
@@ -87,7 +92,9 @@ export function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ assignment_id: assignmentId, date, hours: Number(hours), note }),
       });
-      if (status !== 201) {
+      // 201 synced, 202 pending — both are a successful save from the
+      // employee's point of view (step 2.3's whole reason to exist).
+      if (status !== 201 && status !== 202) {
         const detail = "detail" in body ? body.detail : { message: "Save failed" };
         setError(detail.message);
         return;
@@ -166,9 +173,10 @@ export function App() {
         {entries.map((entry) => {
           const label = assignments.find((a) => a.id === entry.assignment_id)?.label ?? entry.assignment_id;
           return (
-            <li key={entry.id}>
+            <li key={entry.id ?? entry.outbox_id}>
               {entry.hours}h — {label}
               {entry.note.trim() ? ` — ${entry.note}` : ""}
+              {entry.sync_state !== "synced" ? ` (${entry.sync_state})` : ""}
             </li>
           );
         })}
