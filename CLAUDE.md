@@ -26,13 +26,13 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 2, step 2.5 — current period view.
+Next: Phase 2, step 2.6 — time tracking listing.
 
 ### Current status
 
 - Phase: 2 — The product
-- Last completed step: 2.4 — Full entry lifecycle
-- Next step: 2.5 — Current period view
+- Last completed step: 2.5 — Current period view
+- Next step: 2.6 — Time tracking listing
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 
@@ -165,6 +165,16 @@ they don't get rediscovered every session.
   without it can compute values that don't match the real invoicing
   fields at all (0006). Don't use them for anything factual; stick to
   the properly `monetary`-typed fields.
+- **`PeriodService`'s 5-minute in-memory cache (step 2.2) makes manual
+  verification of lock/unlock state misleading if you don't restart `api`
+  between writes.** Setting `last_validated_timesheet_date` (via Odoo UI or
+  API), checking the app, then clearing it back again — all within the
+  same 5 minutes, without a restart — leaves the running `api` process
+  showing whichever state it cached first, for up to 5 minutes after the
+  real Odoo value has already changed. Bit both an automated Playwright
+  run and a manual by-hand check this way (step 2.5). `docker compose
+  restart api` + poll `/api/healthz` forces a cold read; there's no
+  softer invalidation hook yet.
 
 ## Repo layout
 
