@@ -707,6 +707,7 @@ DATABASE_URL=postgresql+psycopg://tti:${POSTGRES_PASSWORD}@db:5432/tti
 | GET | `/api/assignments` | Live from Odoo, this employee only |
 | GET | `/api/periods` | Last 12 months, open or locked |
 | GET | `/api/entries?month=` | Odoo lines overlaid with pending outbox |
+| GET | `/api/entries/search?month=&assignment_id=&q=&limit=&offset=` | Step 2.6: across periods, filtered, paginated (`{items, total}`). Synced Odoo lines only — no pending overlay, see `EntryService.search`'s own note |
 | POST | `/api/entries` | 201 synced, 202 pending, 4xx rejected |
 | PATCH | `/api/entries/{id}` | Same guards as create |
 | DELETE | `/api/entries/{id}` | Same guards as create |

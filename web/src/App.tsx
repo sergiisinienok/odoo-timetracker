@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import type { Me } from "./api";
 import { fetchJson } from "./api";
+import { HistoryView } from "./HistoryView";
 import { MonthView } from "./MonthView";
 import "./styles.css";
 
 export function App() {
   const [me, setMe] = useState<Me | null | "loading">("loading");
+  const [view, setView] = useState<"month" | "history">("month");
 
   useEffect(() => {
     fetchJson<Me>("/api/me").then(({ status, body }) => {
@@ -26,5 +28,9 @@ export function App() {
     );
   }
 
-  return <MonthView me={me} />;
+  if (view === "history") {
+    return <HistoryView onBack={() => setView("month")} />;
+  }
+
+  return <MonthView me={me} onShowHistory={() => setView("history")} />;
 }

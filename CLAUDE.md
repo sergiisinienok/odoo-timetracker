@@ -26,13 +26,13 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 2, step 2.6 — time tracking listing.
+Next: Phase 2, step 2.7 — operations.
 
 ### Current status
 
 - Phase: 2 — The product
-- Last completed step: 2.5 — Current period view
-- Next step: 2.6 — Time tracking listing
+- Last completed step: 2.6 — Time tracking listing
+- Next step: 2.7 — Operations
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 

@@ -140,3 +140,34 @@ async def list_entries(request: Request, month: str | None = None) -> list[dict[
 
     entries = await service.list_for_employee_month(session.employee_id, year, month_num)
     return [_serialize(e) for e in entries]
+
+
+@router.get("/entries/search")
+async def search_entries(
+    request: Request,
+    month: str | None = None,
+    assignment_id: str | None = None,
+    q: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, object]:
+    session = await get_current_session(request)
+    service = _get_entry_service(request)
+
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+
+    try:
+        entries, total = await service.search(
+            employee_id=session.employee_id,
+            month=month,
+            assignment_id=assignment_id,
+            q=q,
+            limit=limit,
+            offset=offset,
+        )
+    except AppError as exc:
+        status = _ERROR_STATUS.get(exc.code, 400)
+        raise HTTPException(status_code=status, detail={"error": exc.code, "message": str(exc)}) from exc
+
+    return {"items": [_serialize(e) for e in entries], "total": total}

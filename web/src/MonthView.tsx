@@ -82,7 +82,7 @@ function buildDays(today: Date, entries: Entry[]): DayGroup[] {
   return days;
 }
 
-export function MonthView({ me }: { me: Me }) {
+export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => void }) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [periodState, setPeriodState] = useState<"open" | "locked" | null>(null);
@@ -180,9 +180,14 @@ export function MonthView({ me }: { me: Me }) {
 
   return (
     <main className="app">
-      <p className="signed-in-as">
-        {me.name} · {me.timezone}
-      </p>
+      <div className="history-header">
+        <p className="signed-in-as">
+          {me.name} · {me.timezone}
+        </p>
+        <button type="button" className="back-link" onClick={onShowHistory}>
+          Time tracking
+        </button>
+      </div>
 
       <div className="month-header">
         <h1>{monthLabel}</h1>

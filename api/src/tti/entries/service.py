@@ -208,6 +208,56 @@ class EntryService:
 
         return "synced" if result.state is OutboxState.SYNCED else "pending"
 
+    async def search(
+        self,
+        *,
+        employee_id: int,
+        month: str | None,
+        assignment_id: str | None,
+        q: str | None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[CreatedEntry], int]:
+        """Step 2.6's "what did I do in June" listing — across periods,
+        filterable, paginated. Reads Odoo directly, synced lines only: this
+        is a retrospective report over confirmed history, not the live
+        editing surface `list_for_employee_month` serves, so it
+        deliberately doesn't overlay pending outbox rows the way that one
+        does. A pending entry is still visible in the current month via
+        the month view within seconds in the normal case; this listing
+        exists for "what happened", not "what's in flight".
+        """
+        domain: list[tuple] = [("employee_id", "=", employee_id)]
+
+        if month is not None:
+            year_str, month_str = month.split("-")
+            year, month_num = int(year_str), int(month_str)
+            start_date = date_type(year, month_num, 1)
+            end_date = date_type(year, month_num, calendar.monthrange(year, month_num)[1])
+            domain += [("date", ">=", start_date.isoformat()), ("date", "<=", end_date.isoformat())]
+
+        if assignment_id is not None:
+            assignment = await self._find_assignment(employee_id, assignment_id)
+            so_line_filter = assignment.so_line_id if assignment.kind == "paid" else False
+            domain += [("project_id", "=", assignment.project_id), ("so_line", "=", so_line_filter)]
+
+        if q:
+            domain.append(("name", "ilike", q))
+
+        total = await self._odoo.execute_kw("account.analytic.line", "search_count", [domain])
+        records = await self._odoo.execute_kw(
+            "account.analytic.line",
+            "search_read",
+            [domain],
+            {
+                "fields": ["date", "unit_amount", "name", "project_id", "so_line", self._profile.app_entry_id_field],
+                "order": "date desc, id desc",
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+        return [self._to_entry(r) for r in records], total
+
     async def list_for_employee_month(self, employee_id: int, year: int, month: int) -> list[CreatedEntry]:
         start_date = date_type(year, month, 1)
         end_date = date_type(year, month, calendar.monthrange(year, month)[1])

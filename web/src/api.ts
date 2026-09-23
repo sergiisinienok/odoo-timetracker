@@ -32,6 +32,11 @@ export type Period = {
   state: "open" | "locked";
 };
 
+export type EntrySearchResult = {
+  items: Entry[];
+  total: number;
+};
+
 export type ErrorBody = { detail: { error: string; message: string } };
 
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<{ status: number; body: T }> {
