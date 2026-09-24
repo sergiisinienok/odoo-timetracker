@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Assignment, Entry, Me, Period } from "./api";
 import { currentMonthKey, fetchJson, todayLocal } from "./api";
+import { Logo } from "./Logo";
 
 const MONTH_NAMES = [
   "January",
@@ -180,6 +181,7 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
 
   return (
     <main className="app">
+      <Logo />
       <div className="history-header">
         <p className="signed-in-as">
           {me.name} · {me.timezone}

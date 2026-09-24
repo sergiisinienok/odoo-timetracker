@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Assignment, Entry, Period } from "./api";
 import { fetchJson } from "./api";
+import { Logo } from "./Logo";
 
 const MONTH_SHORT = [
   "Jan",
@@ -95,9 +96,13 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
 
   return (
     <main className="app">
+      <Logo />
       <div className="history-header">
         <h1>Time tracking</h1>
         <button type="button" className="back-link" onClick={onBack}>
+          <svg className="back-arrow" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+            <path d="M20 12H4M4 12L10.5 5.5M4 12L10.5 18.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          </svg>
           Back to month
         </button>
       </div>

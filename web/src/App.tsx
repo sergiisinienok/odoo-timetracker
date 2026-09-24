@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Me } from "./api";
 import { fetchJson } from "./api";
 import { HistoryView } from "./HistoryView";
+import { Logo } from "./Logo";
 import { MonthView } from "./MonthView";
 import "./styles.css";
 
@@ -20,6 +21,7 @@ export function App() {
   if (me === null) {
     return (
       <main className="app signin">
+        <Logo />
         <h1>Odoo Time Tracker</h1>
         <a className="signin-link" href="/api/auth/google/login">
           Sign in with Google
