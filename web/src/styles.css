@@ -154,18 +154,27 @@ select {
   margin: 0 0 8px;
 }
 
+/* logo · title-or-name · link, on one line: the title takes the slack and
+   wraps its own text if the screen is too narrow, so the logo never shrinks */
+.history-header .signed-in-as,
+.history-header h1 {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .history-header h1 {
   font-family: var(--font-aeonik);
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 500;
   margin: 0;
 }
 
 .brand-logo {
   display: block;
+  flex: none;
   height: 28px;
   width: auto;
-  margin: 0 0 12px;
+  margin: 0;
 }
 
 .back-link {

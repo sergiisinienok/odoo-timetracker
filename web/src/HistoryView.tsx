@@ -96,8 +96,8 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
 
   return (
     <main className="app">
-      <Logo />
       <div className="history-header">
+        <Logo />
         <h1>Time tracking</h1>
         <button type="button" className="back-link" onClick={onBack}>
           <svg className="back-arrow" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">

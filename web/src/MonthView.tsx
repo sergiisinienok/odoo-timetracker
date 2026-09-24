@@ -181,8 +181,8 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
 
   return (
     <main className="app">
-      <Logo />
       <div className="history-header">
+        <Logo />
         <p className="signed-in-as">
           {me.name} · {me.timezone}
         </p>
