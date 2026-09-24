@@ -28,6 +28,8 @@ class Settings:
     internal_project_id: int
     daily_hour_cap: Decimal
     log_level: str = "INFO"
+    ops_digest_to: str = ""
+    digest_hour_utc: int = 7
     profile_path: Path = _REPO_ROOT_PROFILE
 
     @classmethod
@@ -46,6 +48,8 @@ class Settings:
             internal_project_id=int(os.environ["INTERNAL_PROJECT_ID"]),
             daily_hour_cap=Decimal(os.environ["DAILY_HOUR_CAP"]),
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
+            ops_digest_to=os.environ.get("OPS_DIGEST_TO", ""),
+            digest_hour_utc=int(os.environ.get("DIGEST_HOUR_UTC") or 7),
             profile_path=Path(os.environ.get("ODOO_PROFILE_PATH", str(_REPO_ROOT_PROFILE))),
         )
 

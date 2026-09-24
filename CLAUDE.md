@@ -26,13 +26,13 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 2, step 2.7 — operations.
+Next: Phase 2, step 2.8 — hardening.
 
 ### Current status
 
 - Phase: 2 — The product
-- Last completed step: 2.6 — Time tracking listing
-- Next step: 2.7 — Operations
+- Last completed step: 2.7 — Operations
+- Next step: 2.8 — Hardening
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 
@@ -175,6 +175,18 @@ they don't get rediscovered every session.
   run and a manual by-hand check this way (step 2.5). `docker compose
   restart api` + poll `/api/healthz` forces a cold read; there's no
   softer invalidation hook yet.
+
+- **The integration user needs a `mail.mail` grant for the daily digest**
+  (step 2.7). Stock provisioning gives it no access. Probe result: read + create
+  only (write and unlink stay denied) — see `docs/decisions/0009-integration-user-cannot-use-mail-mail.md`.
+  Repeat on the real sandbox and production.
+- **`/readyz` cannot detect a dead Odoo key** — its Odoo check is the
+  unauthenticated `version` call. After rotating `ODOO_KEY`, confirm the
+  containers hold the new one (hash compare, `docs/key-rotation.md` step 4)
+  and make an authenticated call; don't trust readiness alone.
+- **Every Bash call in this repo needs `unset POSTGRES_PASSWORD DATABASE_URL`
+  before `docker compose`** — each call is a fresh shell, and the `dotenv`
+  plugin re-exports the stale empty values every time.
 
 ## Repo layout
 

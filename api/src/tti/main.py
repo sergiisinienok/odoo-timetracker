@@ -6,6 +6,7 @@ from typing import TypedDict
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tti.assignments.service import AssignmentService
 from tti.auth.employees import EmployeeResolver
@@ -16,6 +17,7 @@ from tti.logging import configure_logging
 from tti.odoo.client import OdooClient
 from tti.odoo.errors import OdooError, OdooRejected
 from tti.outbox.service import OutboxService
+from tti.ops.readiness import check_readiness
 from tti.periods.service import PeriodService
 from tti.routes.assignments import router as assignments_router
 from tti.routes.auth import router as auth_router
@@ -29,6 +31,7 @@ class AppState(TypedDict):
     settings: Settings
     profile: OdooProfile | None
     odoo: OdooClient
+    session_factory: async_sessionmaker[AsyncSession]
     employee_resolver: EmployeeResolver
     assignment_service: AssignmentService | None
     period_service: PeriodService | None
@@ -86,6 +89,7 @@ async def lifespan(app: FastAPI):
         settings=settings,
         profile=profile,
         odoo=odoo,
+        session_factory=session_factory,
         employee_resolver=employee_resolver,
         assignment_service=assignment_service,
         period_service=period_service,
@@ -143,3 +147,17 @@ async def healthz() -> dict[str, object]:
         "version_matches_profile": version_matches_profile,
         "profile_loaded": profile is not None,
     }
+
+
+@app.get("/readyz")
+async def readyz() -> JSONResponse:
+    state: AppState = app.state.app_state
+    result = await check_readiness(state["odoo"], state["profile"] is not None, state["session_factory"])
+    return JSONResponse(
+        status_code=200 if result.ready else 503,
+        content={
+            "status": "ready" if result.ready else "not_ready",
+            "checks": result.checks,
+            "oldest_pending_age_seconds": result.oldest_pending_age_seconds,
+        },
+    )

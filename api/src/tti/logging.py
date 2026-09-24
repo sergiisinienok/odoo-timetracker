@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import logging.handlers
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -30,8 +32,16 @@ class JSONFormatter(logging.Formatter):
 
 
 def configure_logging(level: str = "INFO") -> None:
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(JSONFormatter())
+    """JSON to stdout always (`docker compose logs`), plus a rotating file
+    when LOG_FILE is set — 10 MB x 5 files, so bounded at ~60 MB per service."""
+    formatter = JSONFormatter()
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    log_file = os.environ.get("LOG_FILE")
+    if log_file:
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        handlers.append(logging.handlers.RotatingFileHandler(log_file, maxBytes=10_000_000, backupCount=5))
+    for handler in handlers:
+        handler.setFormatter(formatter)
     root = logging.getLogger()
-    root.handlers = [handler]
+    root.handlers = handlers
     root.setLevel(level.upper())

@@ -10,6 +10,7 @@ from tti.config import OdooProfile, Settings
 from tti.db.session import make_session_factory
 from tti.logging import configure_logging
 from tti.odoo.client import OdooClient
+from tti.ops.scheduler import run_digest_loop
 from tti.outbox.worker import run_worker_loop
 from tti.periods.service import PeriodService
 
@@ -32,7 +33,10 @@ async def main() -> None:
 
     logger.info("outbox worker started")
     try:
-        await run_worker_loop(session_factory, odoo, profile, periods)
+        await asyncio.gather(
+            run_worker_loop(session_factory, odoo, profile, periods),
+            run_digest_loop(session_factory, odoo, settings.ops_digest_to, settings.digest_hour_utc),
+        )
     finally:
         await odoo.aclose()
 
