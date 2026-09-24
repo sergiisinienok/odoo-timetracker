@@ -14,11 +14,13 @@ Odoo is the only record — no second database, no sync job.
 
 ## Where we are
 
-Current status: **Phase 1 complete** — gate reviewed and passed (4/5
-clean, item 5 — the Odoo error taxonomy's `OdooUncertain` case — accepted
-and deferred to Phase 2, where the outbox gives it a real caller to test
-against). Full gate review: docs/phase-1-gate-review.md. Phase 0's own
-gate: docs/phase-0-gate-review.md.
+Current status: **Phase 2 complete** — gate reviewed and accepted, 8/8
+items met (two only after fixing real defects the gate's own tests found;
+two accepted with stated caveats: the nightly backup has not yet been
+observed running unattended, and only the Odoo key's rotation was
+rehearsed; the worker's scheduled 07:00 UTC digest is also still to be
+observed). Full gate review: docs/phase-2-gate-review.md.
+Earlier gates: docs/phase-1-gate-review.md, docs/phase-0-gate-review.md.
 
 **Before trusting any of this against production:** everything was
 probed and built against the trial (edu-timetracking.odoo.com), not
@@ -26,13 +28,14 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: the Phase 2 gate review (`docs/implementation-plan.md`, "Phase 2 gate").
+Next: Phase 3 — Pilot. First task: re-run the Phase 0 probe suite against
+the real `particlesg.odoo.com` sandbox and regenerate `odoo_profile.json`.
 
 ### Current status
 
-- Phase: 2 — The product
-- Last completed step: 2.8 — Hardening
-- Next step: Phase 2 gate review
+- Phase: 3 — Pilot (Phase 2 gate passed)
+- Last completed step: Phase 2 gate review
+- Next step: Phase 3, first bullet — probe suite against the real sandbox
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 
