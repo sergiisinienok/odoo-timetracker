@@ -12,11 +12,12 @@ changes needed, per that decision's own "Reversibility" note.
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass, replace
 
 from tti.config import OdooProfile
+from tti.lastknown import LastKnownCache
 from tti.odoo.client import OdooClient
+from tti.odoo.errors import OdooUncertain, OdooUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -42,17 +43,24 @@ class AssignmentService:
         self._odoo = odoo
         self._profile = profile
         self._internal_project_id = internal_project_id
-        self._cache: dict[int, tuple[float, list[Assignment]]] = {}
+        self._cache: LastKnownCache[list[Assignment]] = LastKnownCache(ttl=_CACHE_TTL_SECONDS)
 
     async def list_for_employee(self, employee_id: int) -> list[Assignment]:
-        cached = self._cache.get(employee_id)
+        cached = self._cache.fresh(employee_id)
         if cached is not None:
-            expires_at, assignments = cached
-            if time.monotonic() < expires_at:
-                return assignments
+            return cached
 
-        assignments = await self._build(employee_id)
-        self._cache[employee_id] = (time.monotonic() + _CACHE_TTL_SECONDS, assignments)
+        try:
+            assignments = await self._build(employee_id)
+        except (OdooUnavailable, OdooUncertain):
+            # An outage must not stop someone saving an entry against an
+            # assignment they held a minute ago (docs/decisions/0010).
+            last_known = self._cache.last_known(employee_id)
+            if last_known is None:
+                raise
+            logger.warning("odoo unreachable — serving last-known assignments", extra={"employee_id": employee_id})
+            return last_known
+        self._cache.put(employee_id, assignments)
         return assignments
 
     async def _build(self, employee_id: int) -> list[Assignment]:

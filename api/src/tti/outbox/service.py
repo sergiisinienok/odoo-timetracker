@@ -292,7 +292,7 @@ async def _period_open_for_write(
             [line] = await odoo.execute_kw("account.analytic.line", "read", [[existing_line_id]], {"fields": ["date"]})
             dates.append(date.fromisoformat(line["date"]))
         for d in dates:
-            await periods.guard(row.employee_id, d)
+            await periods.guard(row.employee_id, d, allow_last_known=False)
     except PeriodLocked as exc:
         await _mark_failed(session, row, periods, RuntimeError(PERIOD_LOCKED_PREFIX + str(exc)))
         logger.warning("outbox write refused: month locked", extra={"outbox_id": str(row.id), "op": row.op})

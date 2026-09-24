@@ -1,6 +1,6 @@
 # 0010 — Two gaps found testing the Phase 2 gate
 
-Status: gap 1 and gap 3 fixed; gap 2 open — found 2026-09-24 by
+Status: all three gaps fixed — found 2026-09-24 by
 `api/tests/odoo/test_phase2_gate.py`.
 
 The gate items "app-enforced period locking, demonstrated independently of
@@ -72,6 +72,23 @@ Options:
    the gate's "input survives".
 3. Queue without any pre-checks and validate at drain. Largest change, and
    moves refusals from save time to some later time the employee won't see.
+
+Fixed: option 1. `tti/lastknown.py` (fresh for the TTL, usable when Odoo is
+unreachable for up to 24 h) backs the assignment list, the validated-through
+date and the day's Odoo hours, and the daily cap counts last-known hours plus
+queued rows. The hours view is refreshed by every live read, every month load
+and our own synced writes. The drain-time lock check (gap 1) never uses a
+last-known lock state (`allow_last_known=False`). A cold cache still refuses,
+now with a plain 503 message that names no host.
+
+**Known limits of the fix:**
+- Editing or deleting an existing entry during an outage still refuses: the
+  ownership check reads the line from Odoo, and no last-known view of lines is
+  kept. Only *new* entries are covered.
+- The cap can be exceeded if someone other than this app adds lines for the
+  employee during the outage.
+- The caches are in the api process's memory, so a restart during an outage
+  starts cold.
 
 ## Not covered by either fix
 

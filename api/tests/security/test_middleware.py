@@ -114,3 +114,18 @@ async def test_unhandled_exception_carries_no_stack_trace_or_detail():
     assert r.status_code == 500
     assert r.json() == {"error": "internal_error", "message": "Something went wrong."}
     assert "hunter2" not in r.text and "Traceback" not in r.text and "secret.py" not in r.text
+
+
+async def test_an_unreachable_odoo_gives_a_plain_503_that_names_no_host(client):
+    from tti.main import app
+    from tti.odoo.errors import OdooUnavailable
+
+    class Down:
+        async def execute_kw(self, *a, **k):
+            raise OdooUnavailable("ConnectError: https://odoo.internal.example:8069/jsonrpc refused")
+
+    app.state.app_state["odoo"] = Down()
+    r = await client.get("/me", cookies=_cookie(ME))
+    assert r.status_code == 503 and r.json()["error"] == "odoo_unavailable"
+    assert "odoo.internal.example" not in r.text and "ConnectError" not in r.text
+    assert "try again" in r.json()["message"].lower()

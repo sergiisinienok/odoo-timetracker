@@ -23,6 +23,7 @@ but the space default costs nothing and matches what the plan asks for.
 from __future__ import annotations
 
 import calendar
+import logging
 from dataclasses import dataclass
 from datetime import date as date_type
 from decimal import Decimal
@@ -33,12 +34,17 @@ from tti.domain.daily_cap import validate_daily_cap
 from tti.domain.increments import validate_increment
 from tti.domain.validity import validate_within_assignment
 from tti.entries.errors import AssignmentNotHeld, EntryNotOwned
+from tti.lastknown import LastKnownCache
 from tti.odoo.client import OdooClient
+from tti.odoo.errors import OdooUncertain, OdooUnavailable
 from tti.outbox.errors import OdooWriteRejected
 from tti.outbox.models import OutboxOp, OutboxRow, OutboxState
 from tti.outbox.service import PERIOD_LOCKED_PREFIX, OutboxService
 from tti.periods.errors import PeriodLocked
 from tti.periods.service import PeriodService
+
+
+logger = logging.getLogger(__name__)
 
 
 def _failure_for(last_error: str | None) -> Exception:
@@ -81,6 +87,11 @@ class EntryService:
         self._outbox = outbox
         self._internal_project_id = internal_project_id
         self._daily_hour_cap = daily_hour_cap
+        # (employee, date) -> the Odoo lines on that day as (line id, hours),
+        # as last seen. Only consulted when Odoo cannot be asked — see
+        # docs/decisions/0010, gap 2. ttl=0: never "fresh", every save still
+        # reads live first.
+        self._day_lines: LastKnownCache[list[tuple[int, Decimal]]] = LastKnownCache(ttl=0)
 
     async def create_entry(
         self, *, employee_id: int, assignment_id: str, date: str, hours: float, note: str
@@ -125,7 +136,9 @@ class EntryService:
 
         if result.state is OutboxState.SYNCED:
             assert result.odoo_line_id is not None
-            return await self._read_back(result.odoo_line_id, outbox_id=str(result.outbox_id))
+            entry = await self._read_back(result.odoo_line_id, outbox_id=str(result.outbox_id))
+            self._remember_line(employee_id, entry_date, result.odoo_line_id, hours_decimal)
+            return entry
 
         # PENDING — Odoo unavailable or the outcome was uncertain. Nothing
         # exists to read back; report what we know, honestly unsynced.
@@ -187,6 +200,8 @@ class EntryService:
             raise _failure_for(result.last_error)
 
         if result.state is OutboxState.SYNCED:
+            self._forget_line(employee_id, existing_date, odoo_line_id)
+            self._remember_line(employee_id, entry_date, odoo_line_id, hours_decimal)
             return await self._read_back(odoo_line_id, outbox_id=str(result.outbox_id))
 
         return CreatedEntry(
@@ -216,7 +231,10 @@ class EntryService:
         if result.state is OutboxState.FAILED:
             raise _failure_for(result.last_error)
 
-        return "synced" if result.state is OutboxState.SYNCED else "pending"
+        if result.state is OutboxState.SYNCED:
+            self._forget_line(employee_id, existing_date, odoo_line_id)
+            return "synced"
+        return "pending"
 
     async def search(
         self,
@@ -286,6 +304,16 @@ class EntryService:
         )
         by_odoo_id: dict[int, CreatedEntry] = {r["id"]: self._to_entry(r) for r in records}
 
+        # A month load is the freshest view of every day in it — including days
+        # with no lines, which is knowledge too (0 h).
+        per_day: dict[date_type, list[tuple[int, Decimal]]] = {
+            date_type(year, month, d): [] for d in range(1, calendar.monthrange(year, month)[1] + 1)
+        }
+        for r in records:
+            per_day[date_type.fromisoformat(r["date"])].append((r["id"], Decimal(str(r["unit_amount"]))))
+        for day, lines in per_day.items():
+            self._day_lines.put((employee_id, day), lines)
+
         pending_creates: list[CreatedEntry] = []
         for row in await self._outbox.rows_for_month(employee_id, start_date, end_date):
             if row.op == OutboxOp.CREATE.value:
@@ -303,19 +331,45 @@ class EntryService:
     async def _existing_hours(
         self, employee_id: int, entry_date: date_type, *, exclude_odoo_line_id: int | None = None
     ) -> Decimal:
-        records = await self._odoo.execute_kw(
-            "account.analytic.line",
-            "search_read",
-            [[("employee_id", "=", employee_id), ("date", "=", entry_date.isoformat())]],
-            {"fields": ["id", "unit_amount"]},
-        )
-        odoo_total = Decimal("0")
-        for r in records:
-            if exclude_odoo_line_id is not None and r["id"] == exclude_odoo_line_id:
-                continue
-            odoo_total += Decimal(str(r["unit_amount"]))
+        try:
+            records = await self._odoo.execute_kw(
+                "account.analytic.line",
+                "search_read",
+                [[("employee_id", "=", employee_id), ("date", "=", entry_date.isoformat())]],
+                {"fields": ["id", "unit_amount"]},
+            )
+        except (OdooUnavailable, OdooUncertain):
+            # An outage must not refuse an entry over a limit check. Fall back
+            # to the day as last seen; with no last-known view the limit
+            # cannot be checked at all, and refusing is the only honest answer.
+            last_known = self._day_lines.last_known((employee_id, entry_date))
+            if last_known is None:
+                raise
+            logger.warning(
+                "odoo unreachable — daily cap checked against last-known hours",
+                extra={"employee_id": employee_id, "date": entry_date.isoformat()},
+            )
+            lines = last_known
+        else:
+            lines = [(r["id"], Decimal(str(r["unit_amount"]))) for r in records]
+            self._day_lines.put((employee_id, entry_date), lines)
+
+        odoo_total = sum((h for line_id, h in lines if line_id != exclude_odoo_line_id), Decimal("0"))
         pending_total = await self._outbox.pending_hours_for(employee_id, entry_date)
         return odoo_total + pending_total
+
+    def _remember_line(self, employee_id: int, day: date_type, line_id: int, hours: Decimal) -> None:
+        """Keep the last-known day in step with our own synced writes, so the
+        next outage does not undercount hours we ourselves just wrote. A day
+        never seen is left unknown rather than guessed."""
+        lines = self._day_lines.last_known((employee_id, day))
+        if lines is not None:
+            self._day_lines.put((employee_id, day), [(i, h) for i, h in lines if i != line_id] + [(line_id, hours)])
+
+    def _forget_line(self, employee_id: int, day: date_type, line_id: int) -> None:
+        lines = self._day_lines.last_known((employee_id, day))
+        if lines is not None:
+            self._day_lines.put((employee_id, day), [(i, h) for i, h in lines if i != line_id])
 
     def _entry_from_outbox_row(
         self, row: OutboxRow, *, sync_state: str, odoo_line_id: int | None = None

@@ -19,16 +19,20 @@ see entries/service.py.
 from __future__ import annotations
 
 import calendar
-import time
+import logging
 from dataclasses import dataclass
 from datetime import date
 
 from tti.config import OdooProfile
 from tti.domain.period import PeriodState, resolve_period_state
+from tti.lastknown import LastKnownCache
 from tti.odoo.client import OdooClient
+from tti.odoo.errors import OdooUncertain, OdooUnavailable
 from tti.periods.errors import PeriodLocked
 
 _CACHE_TTL_SECONDS = 5 * 60
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -41,17 +45,22 @@ class PeriodService:
     def __init__(self, odoo: OdooClient, profile: OdooProfile) -> None:
         self._odoo = odoo
         self._profile = profile
-        self._cache: dict[int, tuple[float, date | None]] = {}
+        # The value can legitimately be None (nothing validated yet), so the
+        # cache holds a 1-tuple to tell "cached None" from "not cached".
+        self._cache: LastKnownCache[tuple[date | None]] = LastKnownCache(ttl=_CACHE_TTL_SECONDS)
 
     def invalidate(self, employee_id: int) -> None:
-        self._cache.pop(employee_id, None)
+        self._cache.invalidate(employee_id)
 
-    async def state_for(self, employee_id: int, entry_date: date) -> PeriodState:
-        employee_validated_through = await self._validated_through(employee_id)
+    async def state_for(self, employee_id: int, entry_date: date, *, allow_last_known: bool = True) -> PeriodState:
+        employee_validated_through = await self._validated_through(employee_id, allow_last_known=allow_last_known)
         return resolve_period_state(entry_date, employee_validated_through, None)
 
-    async def guard(self, employee_id: int, entry_date: date) -> None:
-        if await self.state_for(employee_id, entry_date) is PeriodState.LOCKED:
+    async def guard(self, employee_id: int, entry_date: date, *, allow_last_known: bool = True) -> None:
+        """`allow_last_known=False` is for the moment of writing to Odoo: a
+        last-known lock state is fine for accepting input during an outage,
+        never for deciding a write may go ahead."""
+        if await self.state_for(employee_id, entry_date, allow_last_known=allow_last_known) is PeriodState.LOCKED:
             raise PeriodLocked(f"{entry_date} is locked for employee {employee_id}")
 
     async def months_for(self, employee_id: int, today: date, count: int = 12) -> list[MonthSummary]:
@@ -64,19 +73,24 @@ class PeriodService:
             summaries.append(MonthSummary(month=f"{year:04d}-{month:02d}", state=state))
         return summaries
 
-    async def _validated_through(self, employee_id: int) -> date | None:
-        cached = self._cache.get(employee_id)
+    async def _validated_through(self, employee_id: int, *, allow_last_known: bool = True) -> date | None:
+        cached = self._cache.fresh(employee_id)
         if cached is not None:
-            expires_at, value = cached
-            if time.monotonic() < expires_at:
-                return value
+            return cached[0]
 
-        [record] = await self._odoo.execute_kw(
-            "hr.employee", "read", [[employee_id]], {"fields": [self._profile.employee_validated_through]}
-        )
+        try:
+            [record] = await self._odoo.execute_kw(
+                "hr.employee", "read", [[employee_id]], {"fields": [self._profile.employee_validated_through]}
+            )
+        except (OdooUnavailable, OdooUncertain):
+            last_known = self._cache.last_known(employee_id) if allow_last_known else None
+            if last_known is None:
+                raise
+            logger.warning("odoo unreachable — serving last-known lock state", extra={"employee_id": employee_id})
+            return last_known[0]
         raw = record[self._profile.employee_validated_through]
         value = date.fromisoformat(raw) if raw else None
-        self._cache[employee_id] = (time.monotonic() + _CACHE_TTL_SECONDS, value)
+        self._cache.put(employee_id, (value,))
         return value
 
 

@@ -123,7 +123,15 @@ async def odoo_error_handler(request: Request, exc: OdooError) -> JSONResponse:
     logger.warning("unhandled OdooError reached the route layer", exc_info=True)
     if isinstance(exc, OdooRejected):
         return JSONResponse(status_code=422, content={"error": "odoo_rejected", "message": str(exc)})
-    return JSONResponse(status_code=503, content={"error": "odoo_unavailable", "message": str(exc)})
+    # The exception text stays in the log above: it can name internal hosts,
+    # and it is not something an employee can act on.
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": "odoo_unavailable",
+            "message": "Odoo can't be reached right now, so this can't be checked or saved yet. Please try again in a few minutes.",
+        },
+    )
 
 
 @app.get("/healthz")
