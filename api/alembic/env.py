@@ -8,6 +8,7 @@ from alembic import context
 
 from tti.db.base import Base
 from tti.outbox import models as outbox_models  # noqa: F401 — registers OutboxRow on Base.metadata
+from tti.audit import models as audit_models  # noqa: F401 — registers AuditLogRow on Base.metadata
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

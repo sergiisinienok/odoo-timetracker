@@ -26,13 +26,13 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 2, step 2.8 — hardening.
+Next: the Phase 2 gate review (`docs/implementation-plan.md`, "Phase 2 gate").
 
 ### Current status
 
 - Phase: 2 — The product
-- Last completed step: 2.7 — Operations
-- Next step: 2.8 — Hardening
+- Last completed step: 2.8 — Hardening
+- Next step: Phase 2 gate review
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 
@@ -187,6 +187,14 @@ they don't get rediscovered every session.
 - **Every Bash call in this repo needs `unset POSTGRES_PASSWORD DATABASE_URL`
   before `docker compose`** — each call is a fresh shell, and the `dotenv`
   plugin re-exports the stale empty values every time.
+
+- **The Origin check compares against `PUBLIC_BASE_URL` exactly** (scheme,
+  host, port) — step 2.8. Any write from a browser whose origin differs gets
+  403 `bad_origin`, so production must set it to the real HTTPS URL. Deferred
+  from 2.8 on purpose: `/readyz` still can't detect a dead Odoo key (see above).
+- **`audit_log` writes are best-effort** (failure logs at ERROR, never blocks
+  the employee's entry) and unauthenticated mutation attempts aren't audited.
+  Its migration (`211bfd794469`) needs `alembic upgrade head` like the outbox's.
 
 ## Repo layout
 

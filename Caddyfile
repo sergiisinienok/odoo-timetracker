@@ -2,7 +2,27 @@
 # docker-compose.yml). Set CADDY_ADDRESS to the real domain in production to
 # get automatic HTTPS from Caddy instead.
 {$CADDY_ADDRESS:80} {
+	# Security headers on every response, web and api alike — step 2.8.
+	# The CSP is strict on purpose: everything the app loads is same-origin
+	# (fonts are self-hosted, no CDN, no analytics). Loosen it only with a
+	# reason written down. HSTS is ignored by browsers over plain HTTP, so
+	# it is inert in local dev and takes effect once CADDY_ADDRESS is a domain.
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+	}
+
 	handle /api/* {
+		# Every legitimate request body here is a few hundred bytes of JSON.
+		request_body {
+			max_size 64KB
+		}
 		uri strip_prefix /api
 		reverse_proxy api:8000
 	}

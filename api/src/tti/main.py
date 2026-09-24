@@ -23,6 +23,7 @@ from tti.routes.assignments import router as assignments_router
 from tti.routes.auth import router as auth_router
 from tti.routes.entries import router as entries_router
 from tti.routes.periods import router as periods_router
+from tti.security.middleware import install_security
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Odoo Time Tracker API", lifespan=lifespan)
+install_security(app)
 app.include_router(auth_router)
 app.include_router(assignments_router)
 app.include_router(periods_router)

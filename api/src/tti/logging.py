@@ -15,8 +15,28 @@ _RESERVED = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | 
 }
 
 
+SECRET_ENV_VARS = ("ODOO_KEY", "GOOGLE_CLIENT_SECRET", "SESSION_SECRET", "POSTGRES_PASSWORD")
+_MIN_SECRET_LENGTH = 6  # shorter values would mask ordinary words
+
+
+def _secret_values() -> list[str]:
+    values = (os.environ.get(name, "") for name in SECRET_ENV_VARS)
+    # Longest first so a secret containing another is masked whole.
+    return sorted((v for v in values if len(v) >= _MIN_SECRET_LENGTH), key=len, reverse=True)
+
+
 class JSONFormatter(logging.Formatter):
+    """One JSON object per line. Defence in depth: any configured secret's
+    value that reaches a record — in a message, an extra field or a traceback —
+    is masked in the final line, however it got there."""
+
     def format(self, record: logging.LogRecord) -> str:
+        line = self._format(record)
+        for secret in _secret_values():
+            line = line.replace(secret, "[redacted]")
+        return line
+
+    def _format(self, record: logging.LogRecord) -> str:
         payload: dict[str, object] = {
             "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
             "level": record.levelname,

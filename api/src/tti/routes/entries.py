@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import datetime
+from contextlib import asynccontextmanager
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
+from tti.audit.service import record as record_audit
 from tti.entries.service import CreatedEntry
 from tti.errors import AppError
 from tti.routes.auth import get_current_session
@@ -53,6 +55,31 @@ def _serialize(entry: CreatedEntry) -> dict[str, object]:
     }
 
 
+class _Outcome:
+    value = "error"  # what gets recorded if the body exits without setting one
+
+
+@asynccontextmanager
+async def _audited(request: Request, employee_id: int, action: str, target: str):
+    """Records one audit_log row per mutation attempt — allowed, refused or
+    crashed — after it settles. Refusals record the error code (AppError),
+    anything else records "error" and still propagates."""
+    outcome = _Outcome()
+    try:
+        yield outcome
+    except AppError as exc:
+        outcome.value = exc.code
+        raise
+    finally:
+        await record_audit(
+            request.app.state.app_state["session_factory"],
+            employee_id=employee_id,
+            action=action,
+            target=target,
+            outcome=outcome.value,
+        )
+
+
 def _get_entry_service(request: Request):
     service = request.app.state.app_state["entry_service"]
     if service is None:
@@ -66,13 +93,15 @@ async def create_entry(request: Request, body: CreateEntryRequest) -> JSONRespon
     service = _get_entry_service(request)
 
     try:
-        entry = await service.create_entry(
-            employee_id=session.employee_id,
-            assignment_id=body.assignment_id,
-            date=body.date,
-            hours=body.hours,
-            note=body.note,
-        )
+        async with _audited(request, session.employee_id, "entry.create", "new") as audit:
+            entry = await service.create_entry(
+                employee_id=session.employee_id,
+                assignment_id=body.assignment_id,
+                date=body.date,
+                hours=body.hours,
+                note=body.note,
+            )
+            audit.value = entry.sync_state
     except AppError as exc:
         status = _ERROR_STATUS.get(exc.code, 400)
         raise HTTPException(status_code=status, detail={"error": exc.code, "message": str(exc)}) from exc
@@ -91,14 +120,16 @@ async def update_entry(request: Request, entry_id: int, body: UpdateEntryRequest
     service = _get_entry_service(request)
 
     try:
-        entry = await service.update_entry(
-            employee_id=session.employee_id,
-            odoo_line_id=entry_id,
-            assignment_id=body.assignment_id,
-            date=body.date,
-            hours=body.hours,
-            note=body.note,
-        )
+        async with _audited(request, session.employee_id, "entry.update", str(entry_id)) as audit:
+            entry = await service.update_entry(
+                employee_id=session.employee_id,
+                odoo_line_id=entry_id,
+                assignment_id=body.assignment_id,
+                date=body.date,
+                hours=body.hours,
+                note=body.note,
+            )
+            audit.value = entry.sync_state
     except AppError as exc:
         status = _ERROR_STATUS.get(exc.code, 400)
         raise HTTPException(status_code=status, detail={"error": exc.code, "message": str(exc)}) from exc
@@ -113,7 +144,9 @@ async def delete_entry(request: Request, entry_id: int) -> Response:
     service = _get_entry_service(request)
 
     try:
-        sync_state = await service.delete_entry(employee_id=session.employee_id, odoo_line_id=entry_id)
+        async with _audited(request, session.employee_id, "entry.delete", str(entry_id)) as audit:
+            sync_state = await service.delete_entry(employee_id=session.employee_id, odoo_line_id=entry_id)
+            audit.value = sync_state
     except AppError as exc:
         status = _ERROR_STATUS.get(exc.code, 400)
         raise HTTPException(status_code=status, detail={"error": exc.code, "message": str(exc)}) from exc
