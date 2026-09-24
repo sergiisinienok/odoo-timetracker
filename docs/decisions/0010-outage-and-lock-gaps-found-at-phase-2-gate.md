@@ -1,6 +1,6 @@
 # 0010 — Two gaps found testing the Phase 2 gate
 
-Status: gap 1 fixed (owner chose option 1); gap 2 and gap 3 open — found 2026-09-24 by
+Status: gap 1 and gap 3 fixed; gap 2 open — found 2026-09-24 by
 `api/tests/odoo/test_phase2_gate.py`.
 
 The gate items "app-enforced period locking, demonstrated independently of
@@ -80,7 +80,8 @@ during an outage loses them (cold cache: refuse, per above).
 
 ## Gap 3 — a retry while Odoo is still down escapes the worker's error handling
 
-Found 2026-09-24 while testing the fix for gap 1; not fixed, not part of gap 1 or 2.
+Found 2026-09-24 while testing the fix for gap 1. Fixed in its own commit: `_reconcile_search`
+in `outbox/service.py`.
 
 `_attempt_create` and `_attempt_delete` in `outbox/service.py` run their
 reconcile search (`reconcile_first`, any row with `attempts > 0`) outside the

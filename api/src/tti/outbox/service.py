@@ -306,6 +306,26 @@ async def _period_open_for_write(
     return True
 
 
+async def _reconcile_search(
+    session: AsyncSession, row: OutboxRow, odoo: OdooClient, periods: PeriodService, domain: list
+) -> list[dict] | None:
+    """The look-before-you-act search that precedes a retry. Handled like the
+    writes it guards — an unreachable Odoo backs the row off, a rejection
+    fails it — so nothing escapes to the worker loop, where it would roll the
+    transaction back, skip the backoff and, if rejected every time, block the
+    queue behind this row (docs/decisions/0010, gap 3).
+
+    Returns the matching records, or None if the row has already been resolved
+    here and the caller must return without acting."""
+    try:
+        return await odoo.execute_kw("account.analytic.line", "search_read", [domain], {"fields": ["id"]})
+    except (OdooUnavailable, OdooUncertain) as exc:
+        await _mark_pending_retry(session, row, exc)
+    except OdooRejected as exc:
+        await _mark_failed(session, row, periods, exc)
+    return None
+
+
 async def attempt_row(
     session: AsyncSession,
     row: OutboxRow,
@@ -346,12 +366,9 @@ async def _attempt_create(
     reconcile_first: bool,
 ) -> None:
     if reconcile_first:
-        existing = await odoo.execute_kw(
-            "account.analytic.line",
-            "search_read",
-            [[(profile.app_entry_id_field, "=", str(row.id))]],
-            {"fields": ["id"]},
-        )
+        existing = await _reconcile_search(session, row, odoo, periods, [(profile.app_entry_id_field, "=", str(row.id))])
+        if existing is None:
+            return
         if existing:
             await _mark_synced(session, row, existing[0]["id"])
             logger.info("outbox create reconciled to existing Odoo line", extra={"outbox_id": str(row.id)})
@@ -392,9 +409,9 @@ async def _attempt_delete(
     assert row.odoo_line_id is not None
 
     if reconcile_first:
-        existing = await odoo.execute_kw(
-            "account.analytic.line", "search_read", [[("id", "=", row.odoo_line_id)]], {"fields": ["id"]}
-        )
+        existing = await _reconcile_search(session, row, odoo, periods, [("id", "=", row.odoo_line_id)])
+        if existing is None:
+            return
         if not existing:
             # Already gone — a prior attempt's outcome was uncertain but it
             # actually succeeded. Unlinking again would raise MissingError
