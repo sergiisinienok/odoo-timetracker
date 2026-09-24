@@ -43,9 +43,15 @@ from tti.config import OdooProfile
 from tti.odoo.client import OdooClient
 from tti.odoo.errors import OdooRejected, OdooUncertain, OdooUnavailable
 from tti.outbox.models import OutboxOp, OutboxRow, OutboxState
+from tti.periods.errors import PeriodLocked
 from tti.periods.service import PeriodService
 
 logger = logging.getLogger(__name__)
+
+# A row failed because its month locked while it waited — recorded as the
+# start of last_error so the digest and the entry service can tell it from an
+# Odoo rejection. See docs/decisions/0010.
+PERIOD_LOCKED_PREFIX = "period_locked: "
 
 # 10s, 30s, 2m, 10m, 30m, capped at 1h — the delay *before* the Nth retry,
 # N being how many attempts have already been made (the inline attempt at
@@ -258,6 +264,48 @@ async def _mark_synced(session: AsyncSession, row: OutboxRow, odoo_line_id: int)
     await session.commit()
 
 
+async def _period_open_for_write(
+    session: AsyncSession,
+    row: OutboxRow,
+    odoo: OdooClient,
+    periods: PeriodService,
+    *,
+    existing_line_id: int | None = None,
+) -> bool:
+    """The lock check at the moment of writing, not just at save time.
+
+    Odoo accepts writes into a validated month (the profile's
+    `validated_line_writable`), so the app is the only guard — and a row queued
+    while the month was open can be drained after an approver locks it. Reads
+    the validated-through date fresh, bypassing the 5-minute cache: this runs
+    once per write attempt, not per request.
+
+    Returns True if the write may go ahead. Otherwise the row has already been
+    resolved here (failed if locked, back to pending if Odoo couldn't answer)
+    and the caller must return without writing.
+    """
+    periods.invalidate(row.employee_id)
+    try:
+        dates = [row.entry_date]
+        if existing_line_id is not None:
+            # An edit touches the line's current date as well as its new one.
+            [line] = await odoo.execute_kw("account.analytic.line", "read", [[existing_line_id]], {"fields": ["date"]})
+            dates.append(date.fromisoformat(line["date"]))
+        for d in dates:
+            await periods.guard(row.employee_id, d)
+    except PeriodLocked as exc:
+        await _mark_failed(session, row, periods, RuntimeError(PERIOD_LOCKED_PREFIX + str(exc)))
+        logger.warning("outbox write refused: month locked", extra={"outbox_id": str(row.id), "op": row.op})
+        return False
+    except (OdooUnavailable, OdooUncertain) as exc:
+        await _mark_pending_retry(session, row, exc)
+        return False
+    except OdooRejected as exc:
+        await _mark_failed(session, row, periods, exc)
+        return False
+    return True
+
+
 async def attempt_row(
     session: AsyncSession,
     row: OutboxRow,
@@ -309,6 +357,9 @@ async def _attempt_create(
             logger.info("outbox create reconciled to existing Odoo line", extra={"outbox_id": str(row.id)})
             return
 
+    if not await _period_open_for_write(session, row, odoo, periods):
+        return
+
     try:
         line_id = await odoo.execute_kw("account.analytic.line", "create", [_create_vals(row, profile.app_entry_id_field)])
     except (OdooUnavailable, OdooUncertain) as exc:
@@ -322,6 +373,8 @@ async def _attempt_create(
 
 async def _attempt_update(session: AsyncSession, row: OutboxRow, odoo: OdooClient, periods: PeriodService) -> None:
     assert row.odoo_line_id is not None
+    if not await _period_open_for_write(session, row, odoo, periods, existing_line_id=row.odoo_line_id):
+        return
     try:
         await odoo.execute_kw("account.analytic.line", "write", [[row.odoo_line_id], _update_vals(row)])
     except (OdooUnavailable, OdooUncertain) as exc:
@@ -350,6 +403,9 @@ async def _attempt_delete(
             await _mark_synced(session, row, row.odoo_line_id)
             logger.info("outbox delete reconciled: already gone", extra={"outbox_id": str(row.id)})
             return
+
+    if not await _period_open_for_write(session, row, odoo, periods):
+        return
 
     try:
         await odoo.execute_kw("account.analytic.line", "unlink", [[row.odoo_line_id]])

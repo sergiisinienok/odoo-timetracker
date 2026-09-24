@@ -36,8 +36,18 @@ from tti.entries.errors import AssignmentNotHeld, EntryNotOwned
 from tti.odoo.client import OdooClient
 from tti.outbox.errors import OdooWriteRejected
 from tti.outbox.models import OutboxOp, OutboxRow, OutboxState
-from tti.outbox.service import OutboxService
+from tti.outbox.service import PERIOD_LOCKED_PREFIX, OutboxService
+from tti.periods.errors import PeriodLocked
 from tti.periods.service import PeriodService
+
+
+def _failure_for(last_error: str | None) -> Exception:
+    """A failed inline attempt is either Odoo refusing the write, or the month
+    having locked between the save-time check and the write (409, like any
+    other locked-period refusal)."""
+    if last_error and last_error.startswith(PERIOD_LOCKED_PREFIX):
+        return PeriodLocked(last_error.removeprefix(PERIOD_LOCKED_PREFIX))
+    return OdooWriteRejected(last_error or "Odoo rejected the write")
 
 
 @dataclass(frozen=True)
@@ -111,7 +121,7 @@ class EntryService:
         )
 
         if result.state is OutboxState.FAILED:
-            raise OdooWriteRejected(result.last_error or "Odoo rejected the write")
+            raise _failure_for(result.last_error)
 
         if result.state is OutboxState.SYNCED:
             assert result.odoo_line_id is not None
@@ -174,7 +184,7 @@ class EntryService:
         )
 
         if result.state is OutboxState.FAILED:
-            raise OdooWriteRejected(result.last_error or "Odoo rejected the write")
+            raise _failure_for(result.last_error)
 
         if result.state is OutboxState.SYNCED:
             return await self._read_back(odoo_line_id, outbox_id=str(result.outbox_id))
@@ -204,7 +214,7 @@ class EntryService:
         )
 
         if result.state is OutboxState.FAILED:
-            raise OdooWriteRejected(result.last_error or "Odoo rejected the write")
+            raise _failure_for(result.last_error)
 
         return "synced" if result.state is OutboxState.SYNCED else "pending"
 
