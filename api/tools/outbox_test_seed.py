@@ -9,6 +9,7 @@ themselves are already proven for real by api/tests/odoo/test_outbox.py.
 Usage:
     uv run python tools/outbox_test_seed.py insert <employee_id> <date> <hours> <note>
     uv run python tools/outbox_test_seed.py delete <outbox_id>
+    uv run python tools/outbox_test_seed.py sweep-prefix <note_prefix>   # prints how many rows it removed
 """
 
 from __future__ import annotations
@@ -58,6 +59,18 @@ async def delete_row(outbox_id: UUID) -> None:
         await session.commit()
 
 
+async def sweep_prefix(prefix: str) -> int:
+    """Remove every outbox row whose note starts with `prefix` — the e2e suite
+    tags all the rows it creates, so a leak from any earlier aborted run is
+    cleaned up by prefix, with no clock or id bookkeeping."""
+    settings = Settings.from_env()
+    session_factory = make_session_factory(settings.database_url)
+    async with session_factory() as session:
+        result = await session.execute(delete(OutboxRow).where(OutboxRow.note.like(prefix + "%")))
+        await session.commit()
+        return result.rowcount or 0
+
+
 def main() -> None:
     command = sys.argv[1]
     if command == "insert":
@@ -68,6 +81,8 @@ def main() -> None:
         print(outbox_id)
     elif command == "delete":
         asyncio.run(delete_row(UUID(sys.argv[2])))
+    elif command == "sweep-prefix":
+        print(asyncio.run(sweep_prefix(sys.argv[2])))
     else:
         sys.exit(f"unknown command {command!r}")
 

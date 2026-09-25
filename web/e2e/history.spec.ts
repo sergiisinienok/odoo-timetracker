@@ -7,7 +7,7 @@
  * Same sign-in bypass as web/e2e/entry-flow.spec.ts, same reasoning —
  * see that file's own comment.
  */
-import { test, expect } from "@playwright/test";
+import { E2E_PREFIX, expect, test } from "./fixtures";
 import jwt from "jsonwebtoken";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -99,7 +99,7 @@ test("three months, one locked: filters, search, and locked-month read-only enfo
       ODOO_KEY,
       "account.analytic.line",
       "create",
-      [{ employee_id: TM_EMPLOYEE_ID, project_id: 1, date: isoDate(date), unit_amount: 1.0, name: `${marker} ${note}` }],
+      [{ employee_id: TM_EMPLOYEE_ID, project_id: 1, date: isoDate(date), unit_amount: 1.0, name: `${E2E_PREFIX} ${marker} ${note}` }],
     ]);
   }
 

@@ -199,6 +199,16 @@ they don't get rediscovered every session.
   the employee's entry) and unauthenticated mutation attempts aren't audited.
   Its migration (`211bfd794469`) needs `alembic upgrade head` like the outbox's.
 
+- **The Playwright suite (`web/e2e`) needs employee 1 unlocked, and refuses to
+  start otherwise** — with a message, in seconds, instead of 30 s timeouts. Its
+  lock tests "restore" whatever lock they find, so a stale lock used to
+  perpetuate itself. Everything the suite creates (Odoo lines, outbox rows)
+  carries the `e2e-suite` note prefix (`web/e2e/fixtures.ts`); fixtures remove
+  exactly that at the start of a run and after every test, so it leaves nothing
+  behind. New e2e tests must import `test`/`expect` from `./fixtures` and tag
+  what they create. If the guard trips and the lock is not deliberate, clear
+  `hr.employee.last_validated_timesheet_date` on employee 1 and rerun.
+
 ## Repo layout
 
 (from `docs/implementation-plan.md`'s own structure — not fully scaffolded

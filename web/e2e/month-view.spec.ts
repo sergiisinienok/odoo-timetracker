@@ -8,7 +8,7 @@
  * Same sign-in bypass as web/e2e/entry-flow.spec.ts, same reasoning —
  * see that file's own comment.
  */
-import { test, expect } from "@playwright/test";
+import { E2E_PREFIX, expect, test } from "./fixtures";
 import jwt from "jsonwebtoken";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -101,25 +101,14 @@ test("logs an entry in under 60 seconds from a cold load", async ({ page, contex
   await page.goto("/");
 
   await page.getByRole("spinbutton", { name: "Hours" }).fill("1");
+  await page.getByPlaceholder("Note (optional)").fill(`${E2E_PREFIX} quick add`);
   await page.getByRole("button", { name: "Save entry" }).click();
   await expect(page.getByText(/Entry saved|Waiting for Odoo/)).toBeVisible();
 
   const elapsedMs = Date.now() - start;
   expect(elapsedMs).toBeLessThan(60_000);
-
-  // Clean up whatever the quick-add created (today, default assignment).
-  const uid = await odooUid();
-  const ids = (await odooCall("object", "execute_kw", [
-    ODOO_DB,
-    uid,
-    ODOO_KEY,
-    "account.analytic.line",
-    "search",
-    [[["employee_id", "=", TM_EMPLOYEE_ID], ["date", "=", todayIso()]]],
-  ])) as number[];
-  if (ids.length) {
-    await odooCall("object", "execute_kw", [ODOO_DB, uid, ODOO_KEY, "account.analytic.line", "unlink", [ids]]);
-  }
+  // No cleanup here: the fixtures remove every line and outbox row tagged E2E_PREFIX. (This used to delete every
+  // line dated today for the employee, which would also have deleted real entries.)
 });
 
 test("the daily cap is refused with a clear message", async ({ page, context }) => {
@@ -133,7 +122,7 @@ test("the daily cap is refused with a clear message", async ({ page, context }) 
     ODOO_KEY,
     "account.analytic.line",
     "create",
-    [{ employee_id: TM_EMPLOYEE_ID, project_id: 1, date: todayIso(), unit_amount: 9.5, name: "cap test: pre-existing" }],
+    [{ employee_id: TM_EMPLOYEE_ID, project_id: 1, date: todayIso(), unit_amount: 9.5, name: `${E2E_PREFIX} cap test: pre-existing` }],
   ])) as number;
 
   try {
@@ -205,7 +194,7 @@ test("the pending state renders during a simulated outage", async ({ page, conte
   // connectivity for the running api process.
   const outboxId = execFileSync(
     "uv",
-    ["run", "python", "tools/outbox_test_seed.py", "insert", String(TM_EMPLOYEE_ID), todayIso(), "1.25", "pending render test"],
+    ["run", "python", "tools/outbox_test_seed.py", "insert", String(TM_EMPLOYEE_ID), todayIso(), "1.25", `${E2E_PREFIX} pending render test`],
     { cwd: API_DIR, encoding: "utf-8", env: SEED_SCRIPT_ENV },
   ).trim();
 
@@ -239,7 +228,7 @@ test("no API response body carries a rate, amount, or currency field", async ({ 
   // POST's response body too — the thing that most resembles an invoice line.
   const postRes = await request.post("http://localhost/api/entries", {
     headers: { Cookie: cookie, "Content-Type": "application/json" },
-    data: { assignment_id: "internal", date: todayIso(), hours: 0.25, note: "money-leak check" },
+    data: { assignment_id: "internal", date: todayIso(), hours: 0.25, note: `${E2E_PREFIX} money-leak check` },
   });
   const postText = await postRes.text();
   expect(postText).not.toMatch(forbidden);
