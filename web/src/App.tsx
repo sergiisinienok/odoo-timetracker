@@ -22,7 +22,7 @@ export function App() {
     return (
       <main className="app signin">
         <Logo />
-        <h1>Odoo Time Tracker</h1>
+        <h1>Time Tracker</h1>
         <a className="signin-link" href="/api/auth/google/login">
           Sign in with Google
         </a>
