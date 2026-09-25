@@ -2,9 +2,11 @@
 # also copy odoo_profile.json — the single source of truth for Odoo facts,
 # see CLAUDE.md ground rule 2.
 
-FROM python@sha256:67994a05c712036dbfc4385b4bceafc0ce20df950f54b9ea355582c153bf6157
+FROM python@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2
 
 # python:3.14-slim, pinned by digest — see docs/implementation-plan.md Appendix E.
+# The digest is the multi-architecture *index*, not one platform's image, so the
+# same pin builds on an arm64 laptop and an amd64 server (docs/deploy-staging.md).
 
 RUN pip install --no-cache-dir uv==0.12.16
 

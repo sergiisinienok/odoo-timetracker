@@ -42,4 +42,6 @@ docker compose exec worker ls -l /var/log/tti/         # rotated files
 
 **Backups.** The `backup` service writes a `pg_dump -Fc` to the `postgres-backups` volume nightly at 02:00 UTC and deletes dumps older than 14 days. Take one now: `docker compose exec backup /bin/sh /backup.sh --once`. Restore procedure and the recorded drill: [`docs/restore-drill.md`](docs/restore-drill.md).
 
+**Deploying.** Staging setup, step by step: [`docs/deploy-staging.md`](docs/deploy-staging.md).
+
 **Secrets.** `.env` must be mode 600. Key rotation: [`docs/key-rotation.md`](docs/key-rotation.md).

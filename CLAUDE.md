@@ -258,8 +258,9 @@ cd api && set -a && source ../.env && set +a && \
   uv run alembic upgrade head
 ```
 
-(`db`'s port is published to the host — `docker-compose.yml` — so this runs
-from the host, not inside a container. Worth wiring into container startup
+(`db`'s port is published on the host's loopback only (`127.0.0.1:5432`,
+`docker-compose.yml` — never on all interfaces, see `docs/deploy-staging.md`), so
+this runs from the host, not inside a container. Worth wiring into container startup
 before Phase 3 deployment; not done yet.)
 
 This machine has no Docker Desktop — it uses **Podman** with Docker-CLI
