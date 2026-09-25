@@ -1,3 +1,14 @@
+# Trust X-Forwarded-For only when the connection comes from a private address
+# (a reverse proxy on the same host or Docker network, e.g. the staging nginx —
+# docs/deploy-staging.md). A client connecting from a public address still gets
+# its forwarded headers stripped, so it cannot spoof the address the api
+# rate-limits on. Without this, every user behind a proxy shares one bucket.
+{
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
 # Defaults to plain HTTP on :80 for local dev (see CADDY_ADDRESS in
 # docker-compose.yml). Set CADDY_ADDRESS to the real domain in production to
 # get automatic HTTPS from Caddy instead.

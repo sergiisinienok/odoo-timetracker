@@ -1,0 +1,15 @@
+# Staging on a VM that already runs nginx on ports 80/443 — docs/deploy-staging.md.
+#
+# nginx keeps 80/443 and terminates TLS; it proxies the staging hostname to this
+# stack over plain HTTP on 127.0.0.1:8080. Nothing here is reachable from outside
+# the VM except through nginx. Used by adding to .env:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.staging.yml
+# so a plain `docker compose ...` on the VM always includes it.
+services:
+  caddy:
+    ports: !override # replace the base 80/443 list (!reset would just empty it)
+      - "127.0.0.1:8080:80"
+    environment:
+      CADDY_ADDRESS: ":80" # no certificate handling: nginx owns TLS
+  db:
+    ports: !reset [] # nothing on the VM needs host access to Postgres; use `docker compose exec db psql`
