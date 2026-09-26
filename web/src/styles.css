@@ -103,6 +103,24 @@ select {
   margin: 0;
 }
 
+.auth-error {
+  border-left: 3px solid var(--ink);
+  padding: 4px 0 4px 14px;
+  max-width: 460px;
+}
+
+.auth-error h2 {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0 0 6px;
+}
+
+.auth-error p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
 .signin-link {
   display: inline-block;
   padding: 12px 20px;

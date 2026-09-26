@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 import httpx
 import jwt
 from fastapi import APIRouter, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 
 from tti.auth.errors import AuthError
 from tti.auth.google import verify_google_id_token
@@ -72,7 +72,9 @@ async def google_callback(request: Request, code: str, state: str) -> Response:
         )
         resolved = await resolver.resolve(identity.email)
     except AuthError as exc:
-        response = JSONResponse(status_code=403, content={"error": exc.code, "message": str(exc)})
+        # Browser navigation: send the user back to the SPA, which renders a
+        # readable page for the code, instead of a raw JSON body.
+        response = RedirectResponse(f"{settings.public_base_url}/?{urlencode({'auth_error': exc.code})}")
         response.delete_cookie(_STATE_COOKIE)
         return response
 
