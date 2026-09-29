@@ -28,14 +28,17 @@ particlesg.odoo.com. Re-run the full probe suite against the real
 sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
-Next: Phase 3 — Pilot. First task: re-run the Phase 0 probe suite against
-the real `particlesg.odoo.com` sandbox and regenerate `odoo_profile.json`.
+Next: Phase 2b — Tasks and billability (inserted before the pilot, decision
+0011). 2b.1 (decision record and brief v8) is done; next, 2b.2 re-runs the
+Phase 0 probe suite against the real
+`particlesg.odoo.com` sandbox and regenerates `odoo_profile.json` (moved here
+from Phase 3's first bullet).
 
 ### Current status
 
-- Phase: 3 — Pilot (Phase 2 gate passed)
-- Last completed step: Phase 2 gate review
-- Next step: Phase 3, first bullet — probe suite against the real sandbox
+- Phase: 2b — Tasks and billability (Phase 2 gate passed)
+- Last completed step: 2b.1 — decision 0011 and brief v8, owner-confirmed
+- Next step: 2b.2 — existing probe suite against the real sandbox
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 

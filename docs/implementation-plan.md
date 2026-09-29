@@ -9,7 +9,7 @@
 | **Odoo** | Odoo 19 Enterprise (Odoo Online), live sandbox available now |
 | **Versions** | Pinned and justified in Appendix E. Read it before writing a Dockerfile. |
 | **Executed by** | Claude Sonnet, step by step, with a human at Phase 0 and at each phase gate |
-| **Date** | 6 Sep 2026 |
+| **Date** | 6 Sep 2026 — Phase 2b added 29 Sep 2026 (decision 0011) |
 
 ## How to use this plan
 
@@ -632,6 +632,275 @@ Tests: edit changes the Odoo line rather than creating a new one; delete removes
 - Backup restored successfully in a drill
 - Key rotation rehearsed
 
+# Phase 2b — Tasks and billability
+
+**Time is logged against a project and a task, and billability is decided at three levels: project, task, and time record.** Added after the Phase 2 gate, before the pilot, so the pilot runs the model that goes live. The decisions and the brief decisions this changes are in `docs/decisions/0011-tasks-and-three-level-billability.md`; read it first.
+
+**The rule.** Ops sets a billable default on the project and can override it per task (*Same as project* / *Billable* / *Not billable*). The app derives each line's billability from those two when it writes the line. The approver can override any single line afterwards, in Odoo, by setting or clearing its Sales Order Item. **The employee is never asked and never shown.** In Odoo, billable still means exactly one thing: `so_line` is set.
+
+**Everything below runs against `particlesg.odoo.com`, not the trial.** Step 2b.2 is the "re-run the probe suite against the real sandbox" task that previously opened Phase 3.
+
+### The flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor E as Employee
+    participant W as Web app (React)
+    participant A as API (FastAPI)
+    participant Q as Outbox + worker
+    participant O as Odoo 19
+    actor R as Approver
+
+    E->>W: Open month view
+    W->>A: GET /api/catalog
+    A->>O: read project.sale.line.employee.map (employee's projects)
+    A->>O: read project.project (billable default)
+    A->>O: read project.task (open tasks, billable override)
+    A->>O: read own account.analytic.line (last-used task per project)
+    O-->>A: projects, tasks, flags
+    A-->>W: catalog (cached, last-known on outage)
+
+    E->>W: Pick project, task (pre-filled), hours, note
+    E->>W: Save
+    W->>A: POST /api/entries
+    Note over A: Validate: period open, daily cap,<br/>project held, task open and in project
+    Note over A: billable = task override, else project default<br/>so_line = billable ? employee's SO line : False
+    A->>Q: enqueue create (task_id, so_line)
+    A->>O: create account.analytic.line<br/>project_id, task_id, so_line, hours
+    alt Odoo reachable
+        O-->>A: line id
+        A-->>W: saved
+    else Odoo unreachable
+        A-->>W: saved, pending sync
+        Q->>O: retry create
+    end
+
+    E->>W: Edit hours or note
+    W->>A: PATCH /api/entries/id
+    alt approver has overridden so_line (is_so_line_edited)
+        A->>O: write hours/note only, so_line untouched
+    else no override
+        A->>O: write hours/note, recompute so_line
+    end
+
+    R->>O: Set or clear Sales Order Item on one line
+    R->>O: Validate month
+    O->>O: Invoice from SO: only lines with so_line
+```
+
+### The entities
+
+```mermaid
+classDiagram
+    class hr_employee {
+        default_project (Studio)
+    }
+    class project_project {
+        partner_id
+        allow_billable : default
+    }
+    class project_task {
+        project_id
+        stage / active : open?
+        billable : same-as-project | yes | no
+    }
+    class project_sale_line_employee_map {
+        employee_id
+        project_id
+        sale_line_id
+    }
+    class sale_order_line {
+        product, price, invoice_policy
+    }
+    class account_analytic_line {
+        employee_id
+        project_id
+        task_id
+        so_line : set = billable
+        is_so_line_edited : approver override
+        unit_amount, name, date
+        app_entry_id (Studio)
+    }
+    class res_partner
+
+    project_project --> res_partner : customer label
+    project_task --> project_project
+    project_sale_line_employee_map --> hr_employee
+    project_sale_line_employee_map --> project_project
+    project_sale_line_employee_map --> sale_order_line
+    account_analytic_line --> hr_employee
+    account_analytic_line --> project_project
+    account_analytic_line --> project_task
+    account_analytic_line --> sale_order_line : billable only
+```
+
+Every field named in the diagrams except those already in `odoo_profile.json` is *(verify)*: `allow_billable`, the task's open/closed signal, the task billable field, `task_id` on the line, and `is_so_line_edited`.
+
+### 2b.1 — Decision record and brief
+
+**Goal.** The change is written down before any code depends on it.
+
+**Do.** `docs/decisions/0011-tasks-and-three-level-billability.md` records the ten owner decisions, the two assumptions, and the brief decisions reversed. The brief is amended to v8 in place: the core-idea table, the unpaid section, the entry fields, the "what lands in Odoo" table, the decisions list and the phases table.
+
+**Validate.** Owner reads both documents and confirms.
+
+**Done when** the owner has confirmed, and no statement in the brief contradicts 0011.
+
+### 2b.2 — Existing probe suite against the real sandbox
+
+**Goal.** `odoo_profile.json` describes `particlesg.odoo.com`, not the trial.
+
+**Do.** Provision the integration user on particlesg with Timesheets approver, Project and Sales access from the start, plus the `mail.mail` read/create grant (0009) — see the environment quirks in `CLAUDE.md`. Re-create the test project, test employees, mappings, the Studio fields from 0.7 and the internal project. Then re-run every probe from Phase 0 without modification, and `build_profile.py`. Re-check each trial quirk in `CLAUDE.md` (`has_group()` faulting, `create()` returning a list over XML-RPC, the `partner_id` reset, `readonly_timesheet`) and record which ones still hold.
+
+**Validate.**
+
+```
+python3 tools/build_profile.py && git diff odoo_profile.json
+```
+
+Every key present; every difference from the trial profile explained in a decision record or confirmed as expected. Then `pytest api/tests/odoo/ -v` passes against the sandbox, unchanged.
+
+**Done when** the existing app runs green against particlesg with the regenerated profile, before any Phase 2b code exists. A failure here is a sandbox difference, not a Phase 2b bug, and must be understood first.
+
+### 2b.3 — Probe tasks and billability
+
+**Goal.** Every Odoo fact the new model needs is confirmed on the sandbox and written into the profile.
+
+**Do.** `tools/probe_tasks.py`, against the test project, with `--cleanup`:
+
+1. **Project flag.** Read `project.project` fields; confirm the billable toggle *(verify: `allow_billable`)* and what it reads as on the test project and the internal project.
+2. **Task fields.** List `project.task` fields. Name the open/closed signal *(verify: `state` with closed values such as `1_done`/`1_canceled`, or `stage_id.fold`, or `is_closed`)*, `active`, and `sale_line_id`. Report whether anything native could serve as a three-valued billable override. If nothing does, **stop and ask** before adding the Studio selection field in 2b.4.
+3. **Line field.** Confirm `task_id` on `account.analytic.line`, and that a task from another project is refused (or not) by Odoo itself.
+4. **Recompute with a task.** On a project where the test employee has a mapping, and on a task whose `sale_line_id` differs from the employee's mapped line:
+   - create a line with `task_id` set and `so_line` unset; record which order line Odoo fills in (task's or employee's);
+   - create with `task_id` set and `so_line: False` explicitly — the current `unpaid_recipe` — then write `name`, then write `unit_amount`, and read `so_line` after each. **The recipe must hold with a task set**, or the plan changes here;
+   - create billable with `so_line` = employee's mapped line explicitly; confirm it sticks.
+5. **Approver override marker.** Set `so_line` on an unbillable line by a separate write, as the approver would in the UI. Read the manual-edit marker *(verify: `is_so_line_edited`)*. Then write `unit_amount` and `name` as the app would; confirm `so_line` and the marker both survive. Repeat with an override that clears `so_line`. **If the marker is not reliably set by a UI-style edit, stop** — the app cannot protect overrides and needs another signal (e.g. a Studio flag the approver ticks), which is an owner decision.
+6. **Billable task on an unbillable project.** With no employee mapping, create a line on a *Billable* task on the internal project; confirm `so_line` stays empty and `timesheet_invoice_type` is non-billable.
+7. For each line, read `timesheet_invoice_type` and the order line's `qty_delivered` before and after, as in 0.5.
+
+Write the results into the profile: `project_billable_field`, `task_open_domain`, `task_billable_field` and its three value names, `line_task_field`, `so_line_manual_marker_field`, and an updated `unpaid_recipe` if it changed.
+
+**Validate.**
+
+```
+python3 tools/probe_tasks.py --cleanup
+```
+
+Expect printed decision lines: `UNPAID RECIPE WITH TASK: <recipe>`, `OVERRIDE MARKER: <field> survives app write: True`, `BILLABLE TASK, NO MAPPING: so_line=False`, and `qty_delivered unchanged: True` for every unbillable line.
+
+**Done when** the profile holds every new key and re-running the probe reproduces them. Any contradiction with 0011 goes into a new decision record before 2b.4 starts.
+
+### 2b.4 — Odoo configuration
+
+**Goal.** The sandbox has tasks that exercise every billability case.
+
+**Do.** Human, in Odoo:
+
+- The task billable field on `project.task`, per 2b.3 (Studio selection, default *Same as project*, if nothing native).
+- On the T&M test project: a *Same as project* task, a *Not billable* "Rework" task, and one task left in a closed stage.
+- On the flat-rate test project: a *Same as project* task and a *Not billable* task.
+- On an unbillable test project with the employee mapped: a *Billable* task (task overrides project).
+- On the internal project: PTO, Bench, Training, Internal work — all *Not billable* — plus one *Billable* task to exercise the no-mapping case.
+
+Sonnet: `tools/p2bs04-check_task_setup.py` lists every task on those projects with its resolved billability per the rule, for a human to eyeball against the list above.
+
+**Validate.** The script's output matches the list above exactly.
+
+**Done when** every row of the 2b.5 truth table has a real task in the sandbox that produces it.
+
+### 2b.5 — Billability as a pure function
+
+**Goal.** The rule is one function with no I/O, fully tested.
+
+**Do.** In `domain/`: `resolve_billing(project_billable, task_override, mapped_so_line_id) -> (so_line_id | None, warning | None)`. `task_override` is one of *same-as-project* / *billable* / *not-billable*, mapped from the profile's value names at the Odoo boundary, never compared as raw strings in the domain. Billable with no mapped line returns `None` and the warning `billable_without_order_line`.
+
+**Validate.**
+
+```
+pytest api/tests/unit/test_billing_rule.py -v
+```
+
+Tests: the full truth table (2 project values × 3 task values × mapped/unmapped = 12 cases), each asserted explicitly, not generated from the rule under test.
+
+**Done when** 100% coverage of the function, network disabled, as for the rest of `domain/`.
+
+### 2b.6 — The catalog, read live from Odoo
+
+**Goal.** `GET /api/catalog` returns exactly the projects and tasks this employee may log against.
+
+**Do.** Replaces `AssignmentService` and `GET /api/assignments`. Same caching (60 s per employee) and the same last-known fallback on outage (0010).
+
+1. Projects: every project in `project.sale.line.employee.map` for this employee, plus the internal project from config. One entry per project — **no paid/unpaid twins.**
+2. Labels unchanged: customer name, with the project name appended where one customer has two projects in this employee's list; "Internal" for the internal project.
+3. Tasks: per project, the open tasks per `task_open_domain`, id and name only. **No billability in the response** — the employee is never shown it; the server resolves it at write time.
+4. Default project: the Studio field on `hr.employee`, dropped with a warning if not in the list (unchanged behaviour).
+5. Last-used task per project: the `task_id` of the employee's most recent line on that project, if that task is still open. Otherwise none, and the UI asks.
+
+A project with no open tasks is listed with an empty task list and cannot be logged against. The digest reports it for ops.
+
+**Validate.**
+
+```
+pytest api/tests/odoo/test_catalog.py -v
+```
+
+Tests: the mapped employee sees each test project once and the internal project; the closed task is absent; a task from another project never appears under this one; last-used task follows the most recent line; a closed last-used task is not offered; the response contains no billing field of any kind; the outage fallback serves last-known.
+
+**Done when** ops adding a task in Odoo makes it appear on the next uncached call, with no app change.
+
+### 2b.7 — Entries carry a task
+
+**Goal.** Create, update and delete write project, task and a derived `so_line`, and never undo an approver override.
+
+**Do.**
+
+- **Request shape.** Entries take `project_id` and `task_id` instead of `assignment_id`. Responses carry `project_id`, `task_id` (nullable for legacy lines) and labels. No billability field.
+- **Create.** Validate: task is required (`task_required`), belongs to the project (`task_not_in_project`), is open (`task_not_open`), project is held (`project_not_held`, replacing `assignment_not_held`). Resolve `so_line` with 2b.5's rule and write it by the recipe from 2b.3. A `billable_without_order_line` warning is written to the audit log and picked up by the daily digest; the employee sees a normal save.
+- **Update.** Read the line's override marker first. If set: hours, date and note may change and `so_line` is not written; a change of project or task is refused with `billing_set_by_approver` (0011). If not set: re-resolve `so_line` whenever project or task changes. A legacy line with no task must be given one on edit (`task_required`).
+- **Delete.** Unchanged, including for lines with an override.
+- **Outbox.** Payloads gain `task_id`. The Alembic migration converts queued rows from the old shape: `assignment_id` becomes `project_id` with `task_id` null, and the `so_line` the old kind implied is recorded explicitly, so a legacy create still lands exactly as it would have. Drain-time guards (0010) unchanged.
+- **Read-back.** Lines map to project, task (or "No task"), and entry identity as before; `_to_entry` no longer infers an assignment kind from `so_line`.
+- **Search.** `/api/entries/search` filters by `project_id` and `task_id` instead of `assignment_id`.
+
+**Validate.**
+
+```
+pytest api/tests/odoo/test_entry_tasks.py api/tests/odoo/test_entry_create.py -v
+```
+
+Tests: one create per 2b.5 truth-table row, asserting `so_line` on the Odoo line; an unbillable line with a task stays unbillable after hours and note edits; an approver-set override survives an employee edit of hours and note, in both directions (set and cleared); changing the task of an overridden line is refused; a legacy task-less line cannot be edited without a task but can be deleted; a closed task is refused; a task from another project is refused; the old-shape outbox row migrates and drains to the right line.
+
+**Done when** the Phase 2 gate's reconciliation test passes again with tasks, now also comparing `task_id` per line.
+
+### 2b.8 — UI
+
+**Goal.** Logging a day takes the same number of taps as before for the usual case.
+
+**Do.**
+
+- Quick add: project picker, pre-filled with the default; task picker, pre-filled with the last-used task on that project. Changing the project re-fills the task. Unpaid twins gone from the picker.
+- Month view: totals per project, and per task within it. Legacy lines show "No task".
+- Editing a legacy line opens with the task picker empty and required.
+- `billing_set_by_approver` shows a plain sentence: the approver has set how this line is billed; ask them to move it.
+- History: filter by project and task.
+- No billability, anywhere.
+
+**Validate.** `npm run e2e` with new specs: log against a pre-filled task; change project and see the task re-fill; edit a legacy line and be forced to pick a task; a closed task is not offered. All e2e rules from `CLAUDE.md` apply (fixtures, `e2e-suite` prefix).
+
+**Done when** a normal day is logged in under a minute from opening the app, timed by hand.
+
+### 🚦 Phase 2b gate
+
+- Existing test suite passes against particlesg with the regenerated profile (2b.2)
+- `probe_tasks.py` reproduces every decision line; the unpaid recipe holds with a task set
+- Billing rule at 100% unit coverage; every truth-table row demonstrated on a real Odoo line
+- An approver override survives an employee edit, in both directions
+- Zero unbillable lines contribute to `qty_delivered` on any order line
+- App view and Odoo line list reconcile for a full month, including `task_id`
+- No billability, rate or amount in any response body
+
 # Phase 3 — Pilot
 
 **A handful of employees run one full month in the app while their spreadsheets continue in parallel.** Invoices are still produced the old way. The month's purpose is to find the gap between the plan and the work.
@@ -639,7 +908,8 @@ Tests: edit changes the Odoo line rather than creating a new one; delete removes
 **Do.**
 
 - Point the app at production Odoo with production configuration mirroring the sandbox. Re-run the full probe suite against production and regenerate `odoo_profile.json`. **Sandbox and production can differ; assume they do until proven otherwise.**
-- Pick 3–5 people covering: T&M, flat rate, someone with two clients, someone who takes PTO in the month.
+- Pick 3–5 people covering: T&M, flat rate, someone with two clients, someone who takes PTO in the month, and someone who logs on an unbillable task on a client project (Phase 2b).
+- The approver makes at least one time-record billability override in Odoo during the month, and the employee edits that line afterwards.
 - A written comparison at close: for each pilot employee, spreadsheet total vs Odoo total, per day and per assignment. **Any discrepancy is investigated to root cause before Phase 4**, not averaged away.
 - Run one full approval and lock cycle in Odoo with the approver, and one deliberate after-the-fact correction, to walk the correction path before it matters.
 - Collect the things nobody predicted. The brief's "Later" list is decided here, not now.
@@ -704,16 +974,18 @@ DATABASE_URL=postgresql+psycopg://tti:${POSTGRES_PASSWORD}@db:5432/tti
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/api/me` | Employee identity, timezone, default assignment |
-| GET | `/api/assignments` | Live from Odoo, this employee only |
+| GET | `/api/catalog` | Phase 2b, replaces `/api/assignments`: projects and their open tasks, last-used task per project. Live from Odoo, this employee only, no billability |
 | GET | `/api/periods` | Last 12 months, open or locked |
 | GET | `/api/entries?month=` | Odoo lines overlaid with pending outbox |
-| GET | `/api/entries/search?month=&assignment_id=&q=&limit=&offset=` | Step 2.6: across periods, filtered, paginated (`{items, total}`). Synced Odoo lines only — no pending overlay, see `EntryService.search`'s own note |
+| GET | `/api/entries/search?month=&project_id=&task_id=&q=&limit=&offset=` | Step 2.6: across periods, filtered, paginated (`{items, total}`). Synced Odoo lines only — no pending overlay, see `EntryService.search`'s own note |
 | POST | `/api/entries` | 201 synced, 202 pending, 4xx rejected |
 | PATCH | `/api/entries/{id}` | Same guards as create |
 | DELETE | `/api/entries/{id}` | Same guards as create |
 | GET | `/healthz` `/readyz` | Liveness, readiness |
 
 Errors return `{"error": "<stable_code>", "message": "<human sentence>"}`. Stable codes: `employee_not_found`, `employee_ambiguous`, `period_locked`, `assignment_not_held`, `assignment_not_valid_on_date`, `daily_cap_exceeded`, `invalid_increment`, `odoo_unavailable`.
+
+Phase 2b: entries take `project_id` + `task_id` instead of `assignment_id` (the 2.6 search's `assignment_id` filter becomes `project_id`/`task_id` too). `assignment_not_held` becomes `project_not_held`, and four codes are added: `task_required`, `task_not_in_project`, `task_not_open`, `billing_set_by_approver`.
 
 ## Appendix C — Test strategy
 
@@ -742,6 +1014,10 @@ Odoo tests use a dedicated test employee and test project, tagged so they can be
 | 9 | Two people in one role on one client at different rates | Needs a person-specific product or a manual price | Visible exception, not routine |
 | 10 | Odoo Online upgrades the instance under us (SaaS point releases; Odoo 20 expected around Oct 2026) | Field names or behaviour shift mid-build with no deploy on our side | Startup version check + scheduled probe re-run, Appendix E |
 | 11 | Aeonik's web licence does not cover a second host | The app cannot ship with the brand face until an extension is bought | Before Phase 2 UI work, Appendix F |
+| 12 | Setting `task_id` makes Odoo recompute and refill `so_line` on an unbillable line | Absorbed work reaches invoices again, through tasks | Step 2b.3 |
+| 13 | Odoo does not reliably mark an approver's manual Sales Order Item change | The app cannot tell an override from its own write, and an employee edit could undo it; needs an owner decision on another signal | Step 2b.3, escalate to owner |
+| 14 | No native three-valued task billability | A Studio selection field on `project.task`; one more field to configure per task | Step 2b.3 |
+| 15 | A task resolves billable but the employee has no order line on that project | Line saved unbillable; hours go unbilled until ops or the approver notice | Daily digest, 2b.7 |
 
 ## Appendix E — Versions and version policy
 

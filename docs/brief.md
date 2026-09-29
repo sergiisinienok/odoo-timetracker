@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft v7 — incorporates review comments from Yarik |
+| **Status** | Draft v8 — tasks and three-level billability (29 Sep 2026, decision 0011); v7 incorporated review comments from Yarik |
 | **Owner** | Sergii |
 | **Target system** | Odoo 19 Enterprise (Odoo Online) |
 | **Billing model** | Time & materials, rate per employee or monthly flat rate, USD only |
@@ -20,6 +20,10 @@ Earlier drafts assumed employees would keep logging time in spreadsheets and tha
 That decision deletes more work than it adds. Gone from scope: the Google Sheets reader and parser, the reconciliation engine, the mapping registry, the Odoo Spreadsheets migration path, and the nightly sync along with the window in which two systems could disagree.
 
 What it adds is a product to build and operate. That is a real cost, and it is worth paying because it fixes the one thing no integration could: **the moment of entry**. A spreadsheet cannot ask a question, validate an answer, or refuse a bad one. An app can, which is what finally makes billable and non-billable time separable.
+
+### v8: projects, tasks, and three levels of billability
+
+After Phase 2, and before the pilot, the model was refined (`docs/decisions/0011-tasks-and-three-level-billability.md`). Time is now logged against a **project and a task**, and billability is decided at three levels, each overriding the one above: the **project** sets the default, the **task** can override it, and the **approver** can override any single time record in Odoo. The employee still never answers whether time is billable. The paid/unpaid pair of picker entries is gone, because an unbillable task does the same job with less to explain. The sections below are amended to match; where v7 text is replaced, the change is marked **(v8)**.
 
 ---
 
@@ -63,6 +67,16 @@ Instead, the app asks what they worked on, and offers only their own **assignmen
 
 Billability is a property of the assignment, decided once when someone is put on a client, and never re-decided per entry. There is no billable toggle in the interface, because there is nothing for an employee to get wrong.
 
+**(v8)** The table above describes v7. From v8 the employee picks a **project and a task** from the projects they are assigned to, and billability is resolved in three levels:
+
+| Level | Set by | Where | Effect |
+|---|---|---|---|
+| Project | Ops | Odoo project form | The default for every task on it |
+| Task | Ops | Odoo task form | *Same as project*, *Billable*, or *Not billable*; overrides the project |
+| Time record | Approver only | Odoo timesheet line | Overrides the task for that one line, e.g. when a customer agrees to pay for some hours of an otherwise unbillable task |
+
+There is still no billable toggle in the interface, and the employee is still never shown the answer. What changed is where the answer lives: in the task, and so in how ops structures the work, not only in which assignment someone holds. In Odoo, billable still means exactly one thing: the line carries a sales order line.
+
 **Billing mode is invisible to the employee.** Someone on a flat-rate engagement logs time exactly as someone on time & materials does — same picker, same fields, same habit. The difference lives entirely in the Odoo configuration behind the assignment, which is where a commercial term belongs.
 
 ### Unpaid time on a paying client
@@ -74,6 +88,8 @@ So each client engagement produces **two entries in the picker** — the client,
 This keeps the principle intact. The employee is still not answering an accounting question or flipping a switch; they are choosing what they worked on from a list, and one of the choices happens to be "this client, not charged." Whether a given hour belongs there is a judgement their approver can see and correct, which is the right place for it.
 
 The payoff is in the numbers. Absorbed effort now sits on the client's own project rather than vanishing into an internal bucket, so the margin view for that engagement tells the truth — including on flat-rate work, where absorbed hours are the whole story.
+
+**(v8)** The two-entries-per-client mechanism is replaced. Absorbed work is logged on an **unbillable task on the client's project**, such as "Rework" or "Ramp-up", which ops creates. The payoff above is unchanged, and sharper: absorbed effort is now attributed to the client *and* to the kind of work it was. Whether a given hour belongs there is still a judgement the approver can see and correct, now by overriding the single line in Odoo.
 
 **The assignment list comes from Odoo, not from a registry we maintain.** A person's billable assignments are exactly the projects where they have a rate mapping on the sales order — configuration that must exist for invoicing to work at all. The app reads it live. Putting someone on a new client is one action in Odoo, and their picker updates.
 
@@ -129,7 +145,8 @@ Everything the person has logged, across periods. Filter by month and assignment
 |---|---|---|
 | Date | yes | The working day in the employee's own timezone. Defaults to today. Must fall inside the open period and inside the assignment's validity dates. |
 | Hours | yes | Quarter-hour increments. The day's total may not exceed the configured daily maximum, default **10 hours**. |
-| Assignment | yes | From their own list, pre-filled with their Odoo default. Refused if they do not hold it. |
+| Project **(v8, replaces Assignment)** | yes | From the projects they are assigned to, plus the internal project; pre-filled with their Odoo default. Refused if they do not hold it. |
+| Task **(v8)** | yes | An open task on that project, created by ops in Odoo; pre-filled with the task they last used on it. Lines logged before v8 show "No task" and need one when edited. |
 | Note | no | Free text, carried into the Odoo timesheet description |
 
 **On the daily cap.** It is a hard limit, not a warning, because a sanity check nobody has to obey is not a check. It is configurable rather than fixed at ten, and raising it is an ops action. The trade-off is deliberate: a genuine twelve-hour day requires a conversation, which is the correct amount of friction for something that should be rare and is worth someone knowing about.
@@ -142,7 +159,7 @@ Everything the person has logged, across periods. Filter by month and assignment
 
 1. **Log.** The employee saves an entry in the app.
 2. **Write through.** The app immediately creates the corresponding Odoo timesheet line via the external API and keeps its id. An edit updates that line; a delete removes it. The app never holds hours that Odoo does not have.
-3. **Accumulate.** Billable hours land against the employee's own sales order line and appear as delivered quantity. Non-billable hours land in the internal project, where no sales order can reach them.
+3. **Accumulate.** Billable hours land against the employee's own sales order line and appear as delivered quantity. Non-billable hours — on an unbillable task, a client project's or the internal project's — carry no sales order line, so no sales order can reach them. **(v8)** The app decides which at write time from project and task; the approver can change it per line in Odoo.
 4. **Approve.** At month end, one responsible person reviews and validates the whole month in Odoo — every employee, every client, one pass. **Whether a month is complete is the approver's judgement**, not something employees declare, so the app has no submit button and nobody is waiting on anybody.
 5. **Invoice and lock.** Invoices are created from the sales orders. The period is closed and the app makes it read-only.
 
@@ -160,8 +177,11 @@ Everything the person has logged, across periods. Filter by month and assignment
 | Assignment (client, flat rate) | `project.project` + `sale.order.line` | The same, but the order line is priced as a fixed monthly amount and invoiced on its own schedule; hours are recorded against it without driving the amount |
 | Assignment label | `res.partner` | The project's customer — the client name the employee sees |
 | Default assignment | `hr.employee`, Studio field | Many2one to `project.project`, administered on the employee form |
-| Assignment (client, unpaid) | `project.project` | The client's own project, with the sales order line left empty — Odoo's representation of a non-billable timesheet |
-| Assignment (internal) | `project.project` | One catch-all internal project, with no sales order behind it |
+| Assignment (client, unpaid) | `project.project` | **(v8: replaced by unbillable tasks)** The client's own project, with the sales order line left empty — Odoo's representation of a non-billable timesheet |
+| Task **(v8)** | `project.task` | Created by ops on each project; carries the billable override (*Same as project* / *Billable* / *Not billable*), likely a Studio field. Written to the timesheet line's task |
+| Project billable default **(v8)** | `project.project` | The project's own billable setting |
+| Time-record override **(v8)** | `account.analytic.line` | The approver sets or clears the line's sales order item in Odoo; the app never undoes it |
+| Assignment (internal) | `project.project` | One catch-all internal project, with no sales order behind it; **(v8)** with ops-defined tasks such as PTO, Bench, Training, Internal work |
 | Rates | `product.pricelist` | Price per role product per client; the sales order line takes its price from there |
 | — | `product.product` | Service product, Invoicing Policy **Based on Timesheets**, Create on Order **Project & Task** |
 | — | `account.move` | The client invoice, generated from the sales order at close |
@@ -246,8 +266,9 @@ Three things hold in every case. The employee never regains access to a closed m
 ## Decisions
 
 - **The app writes through to Odoo; Odoo is the only record.** No second database, no sync, no reconciliation. The app keeps a durable write queue for retries and nothing more.
-- **Assignments carry billability and billing mode.** Employees pick what they worked on, never whether it is billable, and never see whether an engagement is time & materials or flat rate. Both modes are the same configuration with a different invoicing policy on the sales order line.
-- **Every client engagement offers a paid and an unpaid entry.** Absorbed work stays attributed to the client whose project it was spent on, instead of disappearing into an internal bucket.
+- **Assignments carry billability and billing mode.** Employees pick what they worked on, never whether it is billable, and never see whether an engagement is time & materials or flat rate. Both modes are the same configuration with a different invoicing policy on the sales order line. **(v8)** Billability now comes from project and task, not the assignment alone; billing mode is still the assignment's, still invisible.
+- ~~**Every client engagement offers a paid and an unpaid entry.**~~ **(v8)** Replaced by unbillable tasks on the client's project. Absorbed work stays attributed to the client whose project it was spent on, instead of disappearing into an internal bucket.
+- **(v8) Time is logged against a project and a task; billability has three levels.** Project default, task override, and a per-line override by the approver in Odoo. The employee is never asked and never shown. Tasks are created by ops, never from the app. See decision 0011.
 - **Rates live in Odoo pricelists**, on a service product per role, priced per client. A rate typed onto an order line is an exception, not the norm.
 - **Flat-rate engagements log time too.** Hours do not drive those invoices, but they are the only source of margin and delivery evidence, and one habit for everyone is worth more than the hours saved by exempting people.
 - **The assignment list is read live from Odoo**, and the per-person default lives on the employee form as a Studio field. No separate registry to maintain or drift.
@@ -260,7 +281,7 @@ Three things hold in every case. The employee never regains access to a closed m
 - **The integration runs as an external service** with a dedicated, privileged, rotatable API key. Odoo Online does not host custom modules.
 - **One approver, one monthly pass**, covering every employee and client.
 - **The month is a hard boundary in the app, not in the company.** Employees cannot touch a closed period, and the app never reopens one. Mistakes found afterwards are corrected by the responsible person directly in Odoo, deliberately and with a record. See below.
-- **One catch-all internal project.** Non-billable time is excluded from invoices, not analysed.
+- **One catch-all internal project.** Non-billable time is excluded from invoices. **(v8)** It is now broken down by ops-defined tasks, so internal time can be analysed by kind.
 - **Responsive web, one codebase.** No native apps.
 - **No historical migration.** The app starts with a current month; old spreadsheets are archived as they are.
 
@@ -298,6 +319,7 @@ Nothing blocks a build plan. Three items to settle as work starts:
 | 0 | Odoo foundation | Configure role service products in both invoicing modes, a client pricelist, a test client engagement, per-employee order-line mapping, the internal project, and the Studio default-assignment field. Confirm that a timesheet with no order line reads as non-billable. Create the integration user with approver rights and prove writes for two different employees. Run the locking spike. Ask Odoo the licensing question in writing. |
 | 1 | Walking skeleton | Google sign-in, employee resolution, assignments read from Odoo, one entry written through and visible in Odoo. One employee, one client, nothing else. |
 | 2 | The product | Both views, full entry lifecycle, validation rules, the write queue, period locking. Usable end to end. |
+| 2b | Tasks and billability (v8) | Re-run the probe suite on the real sandbox; project and task pickers; billability resolved from project and task, overridable per line by the approver in Odoo. |
 | 3 | Pilot | A handful of employees run one full month in the app while their spreadsheets continue in parallel. Compare the two at close; invoices still produced the old way. |
 | 4 | Rollout and cutover | Everyone moves to the app, spreadsheets are retired, invoicing runs from Odoo. |
 | Later | Whatever the pilot proves is missing | An approver view, utilisation reporting, PTO, chat reminders — none of it committed to now. |
