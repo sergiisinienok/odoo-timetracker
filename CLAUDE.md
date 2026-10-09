@@ -29,16 +29,18 @@ sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
 Next: Phase 2b — Tasks and billability (inserted before the pilot, decision
-0011). 2b.1 (decision record and brief v8) is done; next, 2b.2 re-runs the
-Phase 0 probe suite against the real
-`particlesg.odoo.com` sandbox and regenerates `odoo_profile.json` (moved here
-from Phase 3's first bullet).
+0011). 2b.1 (decision record and brief v8) and 2b.3 (task probe) are done;
+2b.2 (re-running the Phase 0 probe suite against the real
+`particlesg.odoo.com` sandbox) is **deliberately deferred** — the owner chose
+to build 2b against the trial's `.env`, so 2b.3's facts, including the Studio
+field `x_studio_billable` and the `is_so_line_edited` hand test, must be
+re-confirmed on particlesg (decision 0013) before the pilot.
 
 ### Current status
 
 - Phase: 2b — Tasks and billability (Phase 2 gate passed)
-- Last completed step: 2b.1 — decision 0011 and brief v8, owner-confirmed
-- Next step: 2b.2 — existing probe suite against the real sandbox
+- Last completed step: 2b.3 — task probe, run against the trial (2b.2 skipped for now)
+- Next step: 2b.4 — sample tasks in Odoo (human), then `tools/p2bs04-check_task_setup.py`
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 

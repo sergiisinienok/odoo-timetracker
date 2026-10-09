@@ -16,5 +16,26 @@
   "assignment_end_source": null,
   "unpaid_recipe": "create() with so_line=False passed explicitly",
   "default_project_field": "x_studio_default_project",
-  "app_entry_id_field": "x_studio_timetracking_app_entry_id"
+  "app_entry_id_field": "x_studio_timetracking_app_entry_id",
+  "project_billable_field": "allow_billable",
+  "task_open_domain": [
+    [
+      "is_closed",
+      "=",
+      false
+    ],
+    [
+      "active",
+      "=",
+      true
+    ]
+  ],
+  "task_billable_field": "x_studio_billable",
+  "task_billable_same_as_project_value": "Same as project",
+  "task_billable_yes_value": "Billable",
+  "task_billable_no_value": "Not billable",
+  "line_task_field": "task_id",
+  "so_line_manual_marker_field": "is_so_line_edited",
+  "so_line_manual_marker_reliable": true,
+  "unpaid_recipe_with_task": "create() with so_line=False passed explicitly"
 }
