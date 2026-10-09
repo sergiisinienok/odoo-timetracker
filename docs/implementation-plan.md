@@ -881,7 +881,7 @@ Tests: one create per 2b.5 truth-table row, asserting `so_line` on the Odoo line
 **Do.**
 
 - Quick add: project picker, pre-filled with the default; task picker, pre-filled with the last-used task on that project. Changing the project re-fills the task. Unpaid twins gone from the picker.
-- Month view: totals per project, and per task within it. Legacy lines show "No task".
+- Month view: totals per project only, as today, with no per-task breakdown (decision 0012). Where individual lines are listed, each names its task; legacy lines show "No task".
 - Editing a legacy line opens with the task picker empty and required.
 - `billing_set_by_approver` shows a plain sentence: the approver has set how this line is billed; ask them to move it.
 - History: filter by project and task.
@@ -1017,7 +1017,7 @@ Odoo tests use a dedicated test employee and test project, tagged so they can be
 | 12 | Setting `task_id` makes Odoo recompute and refill `so_line` on an unbillable line | Absorbed work reaches invoices again, through tasks | Step 2b.3 |
 | 13 | Odoo does not reliably mark an approver's manual Sales Order Item change | The app cannot tell an override from its own write, and an employee edit could undo it; needs an owner decision on another signal | Step 2b.3, escalate to owner |
 | 14 | No native three-valued task billability | A Studio selection field on `project.task`; one more field to configure per task | Step 2b.3 |
-| 15 | A task resolves billable but the employee has no order line on that project | Line saved unbillable; hours go unbilled until ops or the approver notice | Daily digest, 2b.7 |
+| 15 | A task resolves billable but the employee has no order line on that project | Line saved unbillable; hours go unbilled until the approver sets its Sales Order Item in Odoo (decision 0012) | Daily digest, 2b.7; how the approver is told is open (0012) |
 
 ## Appendix E — Versions and version policy
 

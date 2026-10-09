@@ -1,0 +1,919 @@
+<title>Tasks and Billing Walkthrough</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap">
+<style>
+/* Layout: presenter deck — step rail on top, story column left, device stage right, decision bar under both. */
+:root {
+  /* presenter chrome */
+  --bg: #f4f1f3;
+  --surface: #ffffff;
+  --ink: #2f0725;
+  --muted: #6b6570;
+  --rule: #e2d9df;
+  --accent: #7a2e63;
+  --accent-soft: #f3e6ee;
+  --agreed: #2f7a4f;
+  --change: #8a6a12;
+  --open: #6b6570;
+  --note-bg: #fff8e6;
+  --note-ink: #5a4508;
+
+  /* the app's own screen tokens (web/src/styles.css) — screens stay light, like a device */
+  --s-ink: #2f0725;
+  --s-paper: #fbfafb;
+  --s-rule: #e7e0e5;
+  --s-hours: #7a2e63;
+  --s-pending: #8a6a12;
+  --s-locked: #6b6570;
+  --s-error: #9a2f2f;
+  --o-bar: #5d4757;
+  --o-bg: #f9f9fa;
+  --o-head: #eeeef1;
+  --o-link: #017e84;
+  --o-hl: #fff3c4;
+
+  --font-ui: "Hanken Grotesk", "Aeonik", Arial, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #171015; --surface: #221921; --ink: #f2e9ef; --muted: #aa9fa7; --rule: #3a2d37;
+    --accent: #dc93c4; --accent-soft: #3a2533; --agreed: #6cc596; --change: #dcb44e; --open: #aa9fa7;
+    --note-bg: #352c17; --note-ink: #f0d98f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #171015; --surface: #221921; --ink: #f2e9ef; --muted: #aa9fa7; --rule: #3a2d37;
+  --accent: #dc93c4; --accent-soft: #3a2533; --agreed: #6cc596; --change: #dcb44e; --open: #aa9fa7;
+  --note-bg: #352c17; --note-ink: #f0d98f;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 16px; line-height: 1.5; margin: 0; }
+button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition-duration: .001ms !important; animation-duration: .001ms !important; } }
+
+.wrap { max-width: 1280px; margin: 0 auto; padding-inline: 24px; padding-block: 20px 40px; }
+
+/* ---- top: title + rail ---- */
+.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 14px; }
+.top h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.top .sub { color: var(--muted); font-size: 14px; margin: 0; }
+.sync { font-size: 13px; color: var(--muted); }
+.sync.off { color: var(--change); }
+
+.rail { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; margin: 0 0 20px; list-style: none; padding-left: 0; }
+.rail button {
+  flex: 1 0 auto; min-width: 92px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; cursor: pointer; text-align: left;
+}
+.rail button[aria-current="step"] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
+.rail .n { font-family: var(--font-mono); font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.rail .t { font-size: 13px; font-weight: 500; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--rule); display: inline-block; }
+.dot.agreed { background: var(--agreed); border-color: var(--agreed); }
+.dot.change { background: var(--change); border-color: var(--change); }
+.dot.open { background: transparent; border-color: var(--open); border-style: dashed; }
+
+/* ---- step body ---- */
+.step { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px; align-items: start; }
+.step[hidden] { display: none !important; }
+.story { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.who { display: inline-flex; align-self: flex-start; gap: 6px; align-items: center; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 4px 10px; border-radius: 999px; }
+.story h2 { font-size: 30px; line-height: 1.15; font-weight: 600; margin: 0; text-wrap: balance; letter-spacing: -0.015em; }
+.story p { margin: 0; max-width: 60ch; }
+.story ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; max-width: 60ch; }
+.notice { background: var(--note-bg); color: var(--note-ink); border-radius: 6px; padding: 10px 14px; font-size: 15px; max-width: 60ch; }
+.notice strong { font-weight: 600; }
+
+.stage { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.frame-label { font-size: 12px; color: var(--muted); letter-spacing: .05em; text-transform: uppercase; margin: 0 0 6px; }
+
+/* sub-step chips inside a stage */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { border: 1px solid var(--rule); background: var(--surface); border-radius: 999px; padding: 6px 14px; cursor: pointer; font-size: 14px; }
+.chips button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+/* ---- decision bar ---- */
+.decide { grid-column: 1 / -1; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 20px; align-items: start; margin-top: 4px; }
+.decide .q-label { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+.decide .q { font-size: 20px; font-weight: 500; margin: 0; text-wrap: balance; }
+.verdict { display: flex; gap: 6px; flex-wrap: wrap; }
+.verdict button { min-height: 44px; padding: 0 16px; border-radius: 6px; border: 1px solid var(--rule); background: var(--bg); cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; }
+.verdict button[aria-pressed="true"][data-v="agreed"] { background: var(--agreed); border-color: var(--agreed); color: var(--surface); }
+.verdict button[aria-pressed="true"][data-v="change"] { background: var(--change); border-color: var(--change); color: var(--surface); }
+.verdict button[aria-pressed="true"][data-v="open"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.decide textarea { grid-column: 1 / -1; width: 100%; min-height: 64px; resize: vertical; border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; background: var(--bg); line-height: 1.45; }
+.decide .saved { grid-column: 1 / -1; font-size: 12px; color: var(--muted); margin: -4px 0 0; min-height: 1em; }
+
+.nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.nav button { min-height: 44px; padding: 0 18px; border-radius: 6px; border: 1px solid var(--rule); background: var(--surface); cursor: pointer; font-weight: 500; }
+.nav button:disabled { opacity: .4; cursor: default; }
+.nav .hint { color: var(--muted); font-size: 13px; align-self: center; }
+
+/* ================= mock: the Time Tracker app ================= */
+.phone { background: var(--s-paper); color: var(--s-ink); border: 1px solid var(--s-rule); border-radius: 18px; padding: 16px; max-width: 460px; width: 100%; font-family: var(--font-ui); font-size: 15px; line-height: 1.4; box-shadow: 0 1px 0 var(--rule), 0 12px 32px -18px rgba(47,7,37,.35); }
+.phone .brand { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--s-locked); margin-bottom: 8px; }
+.phone .brand b { color: var(--s-ink); font-weight: 600; letter-spacing: .02em; }
+.m-header { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 10px; border-bottom: 1px solid var(--s-rule); }
+.m-header h3 { font-size: 20px; font-weight: 500; margin: 0; }
+.m-total { font-family: var(--font-mono); font-size: 20px; font-weight: 700; }
+.qa { border: 1px solid var(--s-rule); border-radius: 6px; padding: 12px; margin: 12px 0 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+.qa label.fl { flex: 1 1 100%; font-size: 12px; color: var(--s-locked); margin: 2px 0 -4px; display: flex; justify-content: space-between; }
+.qa label.fl .new { color: var(--s-hours); font-weight: 600; }
+.qa select, .qa input[type="text"], .fake-select { flex: 1 1 100%; min-width: 0; border: 1px solid var(--s-rule); border-radius: 4px; padding: 10px; min-height: 44px; background: var(--s-paper); color: var(--s-ink); font-size: 15px; }
+.qa select.is-new { border-color: var(--s-hours); box-shadow: 0 0 0 2px rgba(122,46,99,.15); }
+.qa select.invalid { border-color: var(--s-error); }
+.stepper { display: flex; gap: 4px; align-items: center; }
+.stepper button, .stepper output { width: 44px; height: 44px; border: 1px solid var(--s-rule); border-radius: 4px; background: var(--s-paper); color: var(--s-ink); font-family: var(--font-mono); font-size: 17px; display: inline-flex; align-items: center; justify-content: center; }
+.stepper button { cursor: pointer; }
+.stepper output { width: 56px; font-size: 15px; }
+.qa input[type="text"] { flex: 1 1 140px; }
+.qa .save { flex: 1 1 100%; min-height: 44px; border: none; border-radius: 4px; background: var(--s-ink); color: var(--s-paper); font-weight: 500; cursor: pointer; }
+.qa .row-btns { flex: 1 1 100%; display: flex; gap: 8px; }
+.qa .row-btns .save { flex: 2 1 0; }
+.qa .del { flex: 1 1 0; min-height: 44px; border: 1px solid var(--s-rule); background: var(--s-paper); color: var(--s-ink); border-radius: 4px; cursor: pointer; }
+.msg { flex: 1 1 100%; margin: 0; font-size: 13px; min-height: 1.2em; }
+.msg.err { color: var(--s-error); }
+.msg.ok { color: var(--s-ink); }
+.sec-title { font-size: 15px; font-weight: 500; margin: 8px 0 2px; color: var(--s-ink); }
+.days { list-style: none; margin: 0; padding: 0; }
+.days li { display: grid; grid-template-columns: 52px 1fr auto; gap: 10px; align-items: center; min-height: 40px; border-bottom: 1px solid var(--s-rule); padding: 6px 0; }
+.days .d { white-space: nowrap; }
+.days .bar { display: flex; gap: 2px; height: 14px; }
+.days .bar i { background: var(--s-hours); border-radius: 2px; display: block; }
+.days .h { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.days li.flash { background: #f6edf3; transition: background 1.2s; }
+.tot { list-style: none; margin: 0; padding: 0; }
+.tot li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--s-rule); }
+.tot li.proj { font-weight: 500; }
+.tot li.task { padding-left: 16px; color: var(--s-ink); font-size: 14px; }
+.tot li.task.hl { background: #f6edf3; }
+.tot .hrs { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.hist { list-style: none; margin: 0; padding: 0; }
+.hist li { display: grid; grid-template-columns: 64px 1fr auto; gap: 2px 10px; padding: 10px 0; border-bottom: 1px solid var(--s-rule); align-items: baseline; }
+.hist .dt { font-size: 13px; color: var(--s-locked); }
+.hist .what { font-size: 15px; }
+.hist .what .notask { display: inline-block; font-size: 12px; border: 1px dashed var(--s-locked); color: var(--s-locked); border-radius: 3px; padding: 0 5px; margin-left: 4px; }
+.hist .hh { font-family: var(--font-mono); text-align: right; }
+.hist .nt { grid-column: 2 / -1; font-size: 13px; color: var(--s-locked); }
+.hist .ed { grid-column: 2 / -1; justify-self: start; background: none; border: none; padding: 0; color: var(--s-ink); text-decoration: underline; font-size: 13px; cursor: pointer; min-height: 28px; }
+.hist li.lock .ed { display: none; }
+.hist .lk { grid-column: 2 / -1; font-size: 12px; color: var(--s-locked); }
+
+/* open dropdown lookalike */
+.dropdown { border: 1px solid var(--s-hours); border-radius: 4px; background: var(--s-paper); overflow: hidden; flex: 1 1 100%; }
+.dropdown div { padding: 10px; border-bottom: 1px solid var(--s-rule); }
+.dropdown div:last-child { border-bottom: none; }
+.dropdown .on { background: #f6edf3; font-weight: 500; }
+.dropdown .gone { color: var(--s-locked); text-decoration: line-through; }
+
+.compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.compare .phone { max-width: none; }
+
+/* ================= mock: Odoo (simplified) ================= */
+.odoo { background: var(--o-bg); color: #1f1f24; border: 1px solid #d8d8de; border-radius: 8px; overflow: hidden; font-family: Arial, sans-serif; font-size: 14px; box-shadow: 0 12px 32px -20px rgba(0,0,0,.35); }
+.odoo .obar { background: var(--o-bar); color: #fff; padding: 9px 14px; display: flex; gap: 18px; font-size: 13px; align-items: center; }
+.odoo .obar b { font-weight: 700; letter-spacing: .02em; }
+.odoo .obar span { opacity: .85; }
+.odoo .ocrumb { padding: 10px 14px; border-bottom: 1px solid #e3e3e8; color: #555; font-size: 13px; background: #fff; }
+.odoo .ocrumb b { color: #1f1f24; }
+.odoo .obody { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.ofield { display: grid; grid-template-columns: 150px 1fr; gap: 8px; align-items: center; }
+.ofield .k { color: #555; font-weight: 600; font-size: 13px; }
+.ocheck { display: inline-flex; gap: 8px; align-items: center; }
+.ocheck i { width: 16px; height: 16px; border-radius: 3px; background: var(--o-link); display: inline-flex; align-items: center; justify-content: center; color: #fff; font-style: normal; font-size: 11px; }
+.otable-wrap { overflow-x: auto; background: #fff; border: 1px solid #e3e3e8; border-radius: 4px; }
+.otable { border-collapse: collapse; width: 100%; min-width: 440px; }
+.otable th { background: var(--o-head); text-align: left; font-size: 12px; color: #444; padding: 8px 10px; font-weight: 700; }
+.otable td { padding: 8px 10px; border-top: 1px solid #ececf0; vertical-align: middle; }
+.otable td.num { font-family: var(--font-mono); text-align: right; font-size: 13px; }
+.otable th.num { text-align: right; }
+.otable tr.hl td { background: var(--o-hl); }
+.otable .newcol { box-shadow: inset 0 0 0 2px #e0a800; }
+.pill { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid #c9c9d0; color: #333; background: #fff; white-space: nowrap; }
+.pill.bill { border-color: #8bc2a3; background: #e9f6ee; color: #1f5a3a; }
+.pill.nobill { border-color: #d7b4b4; background: #fbeeee; color: #7a2a2a; }
+.pill.same { border-color: #c9c9d0; background: #f3f3f6; color: #444; }
+.oselect { display: inline-flex; align-items: center; gap: 6px; border-bottom: 1px solid #b7b7c0; min-width: 210px; padding: 2px 0; cursor: pointer; background: none; border-top: 0; border-left: 0; border-right: 0; font: inherit; color: inherit; text-align: left; }
+.oselect .ph { color: #999; }
+.oselect::after { content: "▾"; margin-left: auto; color: #888; }
+.osub { font-size: 12px; color: #666; margin: 0; }
+.o-section-title { font-weight: 700; font-size: 13px; color: #333; margin: 2px 0 -4px; }
+
+/* digest email */
+.mail { background: #fff; color: #1f1f24; border: 1px solid #d8d8de; border-radius: 8px; padding: 16px 18px; font-family: Arial, sans-serif; font-size: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 12px 32px -20px rgba(0,0,0,.35); }
+.mail .mh { font-size: 12px; color: #666; border-bottom: 1px solid #eee; padding-bottom: 8px; display: grid; gap: 2px; }
+.mail .mh b { color: #1f1f24; }
+.mail h4 { margin: 0; font-size: 16px; }
+.mail .item { border-left: 3px solid #e0a800; padding: 6px 10px; background: #fffaf0; }
+.mail p { margin: 0; }
+
+/* invoice */
+.inv { background: #fff; color: #1f1f24; border: 1px solid #d8d8de; border-radius: 8px; padding: 18px; font-family: Arial, sans-serif; font-size: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 12px 32px -20px rgba(0,0,0,.35); }
+.inv .ih { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.inv h4 { margin: 0; font-size: 18px; }
+.inv .meta { color: #666; font-size: 12px; text-align: right; }
+.inv .sum { display: flex; justify-content: flex-end; gap: 16px; font-weight: 700; font-family: var(--font-mono); }
+.notbilled { font-size: 13px; color: #555; background: #f6f6f8; border-radius: 4px; padding: 8px 10px; }
+
+/* intro cast */
+.cast { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.cast div { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; }
+.cast b { display: block; font-size: 16px; }
+.cast span { color: var(--muted); font-size: 14px; }
+.changes { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.changes li { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; display: grid; grid-template-columns: 28px 1fr; gap: 10px; }
+.changes .ix { font-family: var(--font-mono); color: var(--accent); font-weight: 700; }
+.changes b { display: block; margin-bottom: 2px; }
+
+/* summary */
+.sumlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sumlist li { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; display: grid; grid-template-columns: 110px 1fr; gap: 4px 14px; }
+.sumlist .st { font-weight: 600; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.sumlist .sq { font-weight: 500; }
+.sumlist .sn { grid-column: 2; color: var(--muted); font-size: 14px; white-space: pre-wrap; }
+.sumlist button { grid-column: 2; justify-self: start; background: none; border: none; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font-size: 13px; }
+.copy { min-height: 44px; padding: 0 18px; border-radius: 6px; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); cursor: pointer; font-weight: 500; align-self: flex-start; }
+.counts { display: flex; gap: 16px; flex-wrap: wrap; font-size: 15px; }
+.counts span { display: inline-flex; gap: 6px; align-items: center; }
+
+@media (max-width: 900px) {
+  .step { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .story h2 { font-size: 24px; }
+  .decide { grid-template-columns: minmax(0, 1fr); }
+  .compare { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .wrap { padding-inline: 16px; }
+  .cast { grid-template-columns: minmax(0, 1fr); }
+  .ofield { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .sumlist li { grid-template-columns: minmax(0, 1fr); }
+  .sumlist .sn, .sumlist button { grid-column: 1; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Time Tracker: tasks and billing</h1>
+      <p class="sub">One example month at Northwind, step by step. Each step ends with a question to settle in the room.</p>
+    </div>
+    <span class="sync" id="sync">Connecting…</span>
+  </header>
+
+  <nav aria-label="Steps"><ol class="rail" id="rail"></ol></nav>
+
+  <main id="steps">
+
+  <!-- ===================== 0 ===================== -->
+  <section class="step" data-step="0" data-title="What changes" data-who="Everyone" data-q="">
+    <div class="story">
+      <span class="who">Everyone</span>
+      <h2>Three things change. Everything else stays the same.</h2>
+      <p>Today an employee picks a client and logs hours. After this change, they pick a client project <em>and a task</em> on it. That one extra field lets us see where the time went and bill it more precisely.</p>
+      <p>We follow one made-up month at a made-up client to see how each role is affected.</p>
+      <div class="cast" aria-label="People in the story">
+        <div><b>Maria</b><span>Developer, logs time on Northwind</span></div>
+        <div><b>Tom</b><span>Designer, logs time on Northwind</span></div>
+        <div><b>Priya</b><span>Ops, sets up projects and tasks in Odoo</span></div>
+        <div><b>Daniel</b><span>Approver, checks the month in Odoo</span></div>
+      </div>
+    </div>
+    <div class="stage">
+      <ol class="changes">
+        <li><span class="ix">1</span><div><b>Every entry has a task</b>The app fills in the task you used last, so a normal day takes the same number of taps as today.</div></li>
+        <li><span class="ix">2</span><div><b>The “(unpaid)” options go away</b>Work the client doesn't pay for, such as rework or ramp-up, goes on a task with that name instead.</div></li>
+        <li><span class="ix">3</span><div><b>Billing is decided by ops and the approver, not by employees</b>Ops sets each project and task as billable or not. The approver can change one line by hand. Employees never see the word “billable”.</div></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ===================== 1 ===================== -->
+  <section class="step" data-step="1" data-title="Ops sets up tasks" data-who="Ops" data-q="Are these the right starting tasks, for client projects and for Internal? And should ops be the only team that creates tasks?">
+    <div class="story">
+      <span class="who">Ops · Priya, in Odoo</span>
+      <h2>Priya sets up the project and its tasks</h2>
+      <p>Northwind's project is billable by default. Priya adds the tasks people will log against. Each task either follows the project or overrides it.</p>
+      <ul>
+        <li><b>Design</b> and <b>Development</b> follow the project, so they are billed.</li>
+        <li><b>Rework</b> and <b>Ramp-up</b> are set to not billable. This is where absorbed work goes.</li>
+        <li>The <b>Internal</b> project gets PTO, Bench, Training and Internal work. None of them are billed.</li>
+      </ul>
+      <div class="notice"><strong>Only ops creates tasks.</strong> Employees can't add one from the app. If a task is missing, they ask ops.</div>
+    </div>
+    <div class="stage">
+      <div>
+        <p class="frame-label">Odoo (simplified)</p>
+        <div class="odoo">
+          <div class="obar"><b>Project</b><span>Projects</span><span>Tasks</span><span>Reporting</span></div>
+          <div class="ocrumb">Projects / <b>Website rebuild</b></div>
+          <div class="obody">
+            <div class="ofield"><span class="k">Customer</span><span>Northwind</span></div>
+            <div class="ofield"><span class="k">Billable</span><span class="ocheck"><i>✓</i> Yes, by default for every task</span></div>
+            <p class="o-section-title">Tasks</p>
+            <div class="otable-wrap">
+              <table class="otable">
+                <thead><tr><th>Task</th><th class="newcol">Billing (new)</th><th>Result</th></tr></thead>
+                <tbody>
+                  <tr><td>Design</td><td class="newcol"><span class="pill same">Same as project</span></td><td><span class="pill bill">Billed</span></td></tr>
+                  <tr><td>Development</td><td class="newcol"><span class="pill same">Same as project</span></td><td><span class="pill bill">Billed</span></td></tr>
+                  <tr><td>Rework</td><td class="newcol"><span class="pill nobill">Not billable</span></td><td><span class="pill nobill">Not billed</span></td></tr>
+                  <tr><td>Ramp-up</td><td class="newcol"><span class="pill nobill">Not billable</span></td><td><span class="pill nobill">Not billed</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="osub">Project <b>Internal</b>: PTO · Bench · Training · Internal work. All not billable.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 2 ===================== -->
+  <section class="step" data-step="2" data-title="Logging a day" data-who="Employee" data-q="When an employee picks a project, should the task default to the one they used last on that project?">
+    <div class="story">
+      <span class="who">Employee · Maria, in the app</span>
+      <h2>Maria logs a normal day</h2>
+      <p>Maria opens the app on 14 October. Her usual project is already selected, and the task is already set to <b>Development</b>, the last task she used on Northwind. She sets the hours, types a short note and saves.</p>
+      <p>If she switches the project, the task changes to the one she last used on that project.</p>
+      <div class="notice"><strong>Try it:</strong> change the project, then press Save.</div>
+      <ul>
+        <li>Same number of taps as today.</li>
+        <li>No question about billing anywhere on the screen.</li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div>
+        <p class="frame-label">Time Tracker app</p>
+        <div class="phone">
+          <div class="brand"><b>PARTICLES · Time</b><span>Maria Santos</span></div>
+          <div class="m-header"><h3>October 2026</h3><span class="m-total" id="s2-total">40.0 h</span></div>
+          <form class="qa" id="s2-form">
+            <label class="fl" for="s2-proj">Project</label>
+            <select id="s2-proj">
+              <option value="nw">Northwind — Website rebuild</option>
+              <option value="int">Internal</option>
+            </select>
+            <label class="fl" for="s2-task"><span>Task</span><span class="new">New</span></label>
+            <select id="s2-task" class="is-new"></select>
+            <div class="stepper" aria-label="Hours"><button type="button" data-d="-0.5" aria-label="Less">−</button><output id="s2-h">8.0</output><button type="button" data-d="0.5" aria-label="More">+</button></div>
+            <input type="text" id="s2-note" value="Checkout page" aria-label="Note">
+            <button class="save" type="submit">Save · Wed 14 Oct</button>
+            <p class="msg ok" id="s2-msg" role="status"></p>
+          </form>
+          <p class="sec-title">This month</p>
+          <ul class="days" id="s2-days">
+            <li><span class="d">Fri 9</span><span class="bar"><i style="width:100%"></i></span><span class="h">8.0</span></li>
+            <li><span class="d">Mon 12</span><span class="bar"><i style="width:100%"></i></span><span class="h">8.0</span></li>
+            <li><span class="d">Tue 13</span><span class="bar"><i style="width:100%"></i></span><span class="h">8.0</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 3 ===================== -->
+  <section class="step" data-step="3" data-title="Absorbed work" data-who="Employee" data-q="Will people know to use Rework or Ramp-up for work the client doesn't pay for? Do we need other task names?">
+    <div class="story">
+      <span class="who">Employee · Maria, in the app</span>
+      <h2>Unpaid work goes on a task, not on a separate “(unpaid)” option</h2>
+      <p>Maria spends two hours fixing a bug she introduced last sprint. The client shouldn't pay for that.</p>
+      <p><b>Today</b> she would pick “Northwind (unpaid)”. <b>After the change</b> she picks the Northwind project and the <b>Rework</b> task. Ops has already marked Rework as not billable, so the hours stay off the invoice.</p>
+      <div class="notice"><strong>For the room:</strong> Maria still makes a choice here. She chooses <em>what kind of work</em> it was, not whether the client pays.</div>
+    </div>
+    <div class="stage">
+      <div class="compare">
+        <div>
+          <p class="frame-label">Today</p>
+          <div class="phone">
+            <div class="qa" style="margin:0">
+              <label class="fl">What did you work on?</label>
+              <div class="dropdown" role="presentation">
+                <div>Northwind — Website rebuild</div>
+                <div class="on">Northwind — Website rebuild (unpaid)</div>
+                <div>Internal</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <p class="frame-label">After the change</p>
+          <div class="phone">
+            <div class="qa" style="margin:0">
+              <label class="fl">Project</label>
+              <div class="fake-select">Northwind — Website rebuild</div>
+              <label class="fl"><span>Task</span><span class="new">New</span></label>
+              <div class="dropdown" role="presentation">
+                <div>Design</div>
+                <div>Development</div>
+                <div>Ramp-up</div>
+                <div class="on">Rework</div>
+              </div>
+              <div class="stepper"><button type="button" tabindex="-1">−</button><output>2.0</output><button type="button" tabindex="-1">+</button></div>
+              <div class="fake-select" style="flex:1 1 140px">Fixing my checkout bug</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 4 ===================== -->
+  <section class="step" data-step="4" data-title="Month view" data-who="Employee" data-q="Is a breakdown by task useful for employees, or is it too much detail?">
+    <div class="story">
+      <span class="who">Employee · Maria, in the app</span>
+      <h2>The month shows totals by project, then by task</h2>
+      <p>At the bottom of the month view, Maria sees where her time went. Today this list shows one total per client. After the change, each project lists its tasks underneath.</p>
+      <ul>
+        <li>Rework and Ramp-up appear like any other task. Nothing on screen says they aren't billed.</li>
+        <li>History can be filtered by project and by task.</li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div>
+        <p class="frame-label">Time Tracker app</p>
+        <div class="phone">
+          <div class="brand"><b>PARTICLES · Time</b><span>Maria Santos</span></div>
+          <div class="m-header"><h3>October 2026</h3><span class="m-total">160.0 h</span></div>
+          <p class="sec-title" style="margin-top:12px">Totals</p>
+          <ul class="tot">
+            <li class="proj"><span>Northwind — Website rebuild</span><span class="hrs">144.0</span></li>
+            <li class="task"><span>Development</span><span class="hrs">128.0</span></li>
+            <li class="task"><span>Design</span><span class="hrs">4.0</span></li>
+            <li class="task hl"><span>Rework</span><span class="hrs">8.0</span></li>
+            <li class="task"><span>Ramp-up</span><span class="hrs">4.0</span></li>
+            <li class="proj"><span>Internal</span><span class="hrs">16.0</span></li>
+            <li class="task"><span>PTO</span><span class="hrs">16.0</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 5 ===================== -->
+  <section class="step" data-step="5" data-title="Old lines" data-who="Employee" data-q="Is it OK that editing an old line means picking a task first? (Deleting it does not.)">
+    <div class="story">
+      <span class="who">Employee · Maria, in the app</span>
+      <h2>Lines logged before the change show “No task”</h2>
+      <p>Lines Maria logged before the change have no task. They show as <b>No task</b> and are otherwise untouched.</p>
+      <p>If she edits one while its month is still open, she has to pick a task before she can save. She can still delete it without picking one. Lines in a closed month can't be edited at all, as today.</p>
+      <div class="notice"><strong>Try it:</strong> press Edit on the 30 Sep line, then Save without choosing a task.</div>
+    </div>
+    <div class="stage">
+      <div>
+        <p class="frame-label">Time Tracker app · History</p>
+        <div class="phone">
+          <div class="brand"><b>PARTICLES · Time</b><span>Maria Santos</span></div>
+          <ul class="hist" id="s5-list">
+            <li><span class="dt">1 Oct</span><span class="what">Northwind — Website rebuild · Development</span><span class="hh">8.0</span><span class="nt">API for cart</span></li>
+            <li id="s5-legacy"><span class="dt">30 Sep</span><span class="what">Northwind — Website rebuild <span class="notask">No task</span></span><span class="hh" id="s5-legacy-h">6.0</span><span class="nt">Sprint review</span><button class="ed" type="button" id="s5-edit">Edit</button></li>
+            <li class="lock"><span class="dt">28 Aug</span><span class="what">Northwind — Website rebuild <span class="notask">No task</span></span><span class="hh">8.0</span><span class="lk">August is closed</span></li>
+          </ul>
+          <form class="qa" id="s5-form" hidden>
+            <label class="fl" for="s5-proj">Project</label>
+            <div class="fake-select" id="s5-proj">Northwind — Website rebuild</div>
+            <label class="fl" for="s5-task"><span>Task</span><span class="new">Required</span></label>
+            <select id="s5-task" class="is-new">
+              <option value="">Choose a task…</option>
+              <option>Design</option><option>Development</option><option>Ramp-up</option><option>Rework</option>
+            </select>
+            <div class="stepper"><button type="button" data-d="-0.5" aria-label="Less">−</button><output id="s5-h">6.0</output><button type="button" data-d="0.5" aria-label="More">+</button></div>
+            <input type="text" value="Sprint review" aria-label="Note">
+            <div class="row-btns"><button class="save" type="submit">Save</button><button class="del" type="button" id="s5-del">Delete</button></div>
+            <p class="msg" id="s5-msg" role="status"></p>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 6 ===================== -->
+  <section class="step" data-step="6" data-title="Approver changes a line" data-who="Approver" data-q="Should the approver be the only person who changes billing on a single line, and only in Odoo?">
+    <div class="story">
+      <span class="who">Approver · Daniel, in Odoo</span>
+      <h2>The client agrees to pay for one rework line</h2>
+      <p>Maria logged three Rework lines this month. Northwind agrees that the 9 October one was a change of scope, so they will pay for it.</p>
+      <p>Daniel opens Maria's timesheet in Odoo and sets that one line's <b>Sales Order Item</b>. That makes the line billed. The other two stay unbilled.</p>
+      <div class="chips" role="group" aria-label="What happens next">
+        <button type="button" data-s6="a" aria-pressed="true">1 · Daniel sets the line</button>
+        <button type="button" data-s6="b" aria-pressed="false">2 · Maria edits the hours</button>
+        <button type="button" data-s6="c" aria-pressed="false">3 · Maria tries to change the task</button>
+      </div>
+      <p id="s6-story">Daniel picks the order line in the empty cell. The app has no screen for this. The approver does it in Odoo, where they already validate the month.</p>
+    </div>
+    <div class="stage">
+      <div>
+        <p class="frame-label">Odoo (simplified) · Timesheets</p>
+        <div class="odoo">
+          <div class="obar"><b>Timesheets</b><span>To validate</span><span>Reporting</span></div>
+          <div class="ocrumb">To validate / <b>Maria Santos · October 2026</b></div>
+          <div class="obody">
+            <div class="otable-wrap">
+              <table class="otable">
+                <thead><tr><th>Date</th><th>Task</th><th>Description</th><th class="num">Hours</th><th>Sales Order Item</th></tr></thead>
+                <tbody>
+                  <tr><td>2 Oct</td><td>Rework</td><td>Broken login redirect</td><td class="num">3.0</td><td><span class="oselect" style="cursor:default"><span class="ph">None</span></span></td></tr>
+                  <tr id="s6-row"><td>9 Oct</td><td>Rework</td><td>Checkout totals, per new tax rule</td><td class="num" id="s6-h">2.0</td><td id="s6-sol"><span class="oselect"><span class="ph">None</span></span></td></tr>
+                  <tr><td>14 Oct</td><td>Rework</td><td>Fixing my checkout bug</td><td class="num">3.0</td><td><span class="oselect" style="cursor:default"><span class="ph">None</span></span></td></tr>
+                  <tr><td>14 Oct</td><td>Development</td><td>Checkout page</td><td class="num">8.0</td><td>S00042 · Developer</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="s6-app" hidden>
+        <p class="frame-label">Time Tracker app · Maria edits the 9 Oct line</p>
+        <div class="phone">
+          <div class="qa" style="margin:0">
+            <label class="fl">Project</label>
+            <div class="fake-select">Northwind — Website rebuild</div>
+            <label class="fl">Task</label>
+            <div class="fake-select" id="s6-task">Rework</div>
+            <div class="stepper"><button type="button" tabindex="-1">−</button><output id="s6-app-h">2.5</output><button type="button" tabindex="-1">+</button></div>
+            <div class="fake-select" style="flex:1 1 140px">Checkout totals, per new tax rule</div>
+            <button class="save" type="button" tabindex="-1">Save</button>
+            <p class="msg" id="s6-msg"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 7 ===================== -->
+  <section class="step" data-step="7" data-title="Setup gap" data-who="Ops" data-q="When a line is billable but has nothing to bill against, who fixes it, and how quickly?">
+    <div class="story">
+      <span class="who">Employee → Ops · Tom, then Priya</span>
+      <h2>A billable task with nothing to bill against</h2>
+      <p>Priya adds a <b>Client workshop</b> task to the Internal project and marks it billable by mistake. Tom logs 4 hours on it.</p>
+      <p>A billed line has to point at a line on a sales order, and the Internal project has none. The app can't bill the line, but it doesn't block Tom over a setup problem he can't see or fix.</p>
+      <ul>
+        <li>Tom sees a normal “Saved”.</li>
+        <li>The line is saved as <b>not billed</b>.</li>
+        <li>The next morning's digest tells ops, so they can fix the setup or ask the approver to set the line by hand.</li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="compare">
+        <div>
+          <p class="frame-label">Time Tracker app · Tom</p>
+          <div class="phone">
+            <div class="qa" style="margin:0">
+              <label class="fl">Project</label>
+              <div class="fake-select">Internal</div>
+              <label class="fl">Task</label>
+              <div class="fake-select">Client workshop</div>
+              <div class="stepper"><button type="button" tabindex="-1">−</button><output>4.0</output><button type="button" tabindex="-1">+</button></div>
+              <div class="fake-select" style="flex:1 1 100px">Northwind kickoff prep</div>
+              <button class="save" type="button" tabindex="-1">Save · Thu 15 Oct</button>
+              <p class="msg ok">Saved.</p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <p class="frame-label">Daily digest email · 07:00</p>
+          <div class="mail">
+            <div class="mh"><span>To: <b>ops@</b></span><span>Subject: <b>Time Tracker: 1 line needs attention</b></span></div>
+            <h4>A billable line had nothing to bill against</h4>
+            <div class="item">
+              <p><b>Tom Reyes</b> · Thu 15 Oct · 4.0 h</p>
+              <p>Internal · Client workshop</p>
+              <p style="color:#666;font-size:13px">The task is billable, but Tom has no sales order line on this project. Saved as not billed.</p>
+            </div>
+            <p style="font-size:13px">Fix the task's billing setting, or ask the approver to set the line's Sales Order Item in Odoo.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 8 ===================== -->
+  <section class="step" data-step="8" data-title="The invoice" data-who="Owner" data-q="Is anything about what reaches the invoice surprising or wrong?">
+    <div class="story">
+      <span class="who">Owner / management</span>
+      <h2>What Northwind is billed for October</h2>
+      <p>Maria's billed hours reach the invoice through the sales order, as they do today. The only difference is <em>which</em> lines count: Development and Design, plus the one Rework line Daniel set by hand.</p>
+      <p><b>Flat-rate clients</b> pay the same monthly amount whatever the hours. For them, billed vs. not billed hours only show how much of the work was in scope and how much we absorbed.</p>
+    </div>
+    <div class="stage">
+      <div>
+        <p class="frame-label">Odoo (simplified) · Invoice draft</p>
+        <div class="inv">
+          <div class="ih"><h4>Northwind</h4><div class="meta">Draft invoice · October 2026<br>From sales order S00042</div></div>
+          <div class="otable-wrap">
+            <table class="otable">
+              <thead><tr><th>Description</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Amount</th></tr></thead>
+              <tbody>
+                <tr><td>Website rebuild · Developer (Maria)<br><span class="osub">Development 128.0 · Design 4.0 · Rework 9 Oct 2.0</span></td><td class="num">134.0</td><td class="num">€95</td><td class="num">€12,730</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="notbilled"><b>Not billed:</b> Rework 6.0 h · Ramp-up 4.0 h · PTO 16.0 h</div>
+        </div>
+      </div>
+      <div>
+        <p class="frame-label">Flat-rate example · Harbor Lane retainer</p>
+        <div class="inv">
+          <div class="ih"><h4>Harbor Lane</h4><div class="meta">Monthly retainer · October 2026</div></div>
+          <div class="sum"><span>Fixed fee</span><span>€6,000</span></div>
+          <div class="notbilled">Hours logged: 52.0 in scope · 9.0 absorbed (Rework, Ramp-up). The fee doesn't change. The split shows how much the retainer really cost us.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 9 ===================== -->
+  <section class="step" data-step="9" data-title="Summary" data-who="Everyone" data-q="">
+    <div class="story">
+      <span class="who">Everyone</span>
+      <h2>What we agreed</h2>
+      <p>Every answer from today, in one list. Anything marked Change or Open needs follow-up before building starts.</p>
+      <div class="counts" id="s9-counts"></div>
+      <button class="copy" type="button" id="s9-copy">Copy as text</button>
+      <p class="sync" id="s9-copied" role="status"></p>
+    </div>
+    <div class="stage">
+      <ul class="sumlist" id="s9-list"></ul>
+    </div>
+  </section>
+
+  </main>
+
+  <div class="nav">
+    <button type="button" id="prev">← Back</button>
+    <span class="hint">Arrow keys move between steps</span>
+    <button type="button" id="next">Next →</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  const steps = Array.from(document.querySelectorAll(".step"));
+  const rail = document.getElementById("rail");
+  const syncEl = document.getElementById("sync");
+  const LABEL = { agreed: "Agreed", change: "Change", open: "Open" };
+  const answers = {};          // stepId -> {status, note}
+  let db = null, col = null;
+  let current = 0;
+
+  // ---------- decision bars ----------
+  steps.forEach((sec) => {
+    const q = sec.dataset.q;
+    if (!q) return;
+    const id = sec.dataset.step;
+    const box = document.createElement("div");
+    box.className = "decide";
+    box.innerHTML =
+      '<div><p class="q-label">Question for the room</p><p class="q"></p></div>' +
+      '<div class="verdict" role="group" aria-label="Verdict">' +
+      '<button type="button" data-v="agreed" aria-pressed="false">Agreed</button>' +
+      '<button type="button" data-v="change" aria-pressed="false">Change</button>' +
+      '<button type="button" data-v="open" aria-pressed="false">Open</button></div>' +
+      '<textarea id="note-' + id + '" placeholder="What did the room say? Changes, names, who follows up…" aria-label="Notes for this step"></textarea>' +
+      '<p class="saved" id="saved-' + id + '"></p>';
+    box.querySelector(".q").textContent = q;
+    sec.appendChild(box);
+
+    box.querySelectorAll(".verdict button").forEach((b) => {
+      b.addEventListener("click", () => {
+        const v = b.dataset.v;
+        const cur = (answers[id] || {}).status;
+        save(id, { status: cur === v ? null : v });
+      });
+    });
+    const ta = box.querySelector("textarea");
+    let t;
+    ta.addEventListener("input", () => {
+      clearTimeout(t);
+      setSaved(id, "Typing…");
+      t = setTimeout(() => save(id, { note: ta.value }), 700);
+    });
+    ta.addEventListener("blur", () => { clearTimeout(t); if ((answers[id] || {}).note !== ta.value) save(id, { note: ta.value }); });
+  });
+
+  function setSaved(id, text) { const el = document.getElementById("saved-" + id); if (el) el.textContent = text; }
+
+  async function save(id, patch) {
+    answers[id] = Object.assign({ status: null, note: "" }, answers[id], patch);
+    renderAnswers();
+    if (!col) { setSaved(id, "Not saved: answers can't be stored in this view."); return; }
+    try {
+      await col.doc("s" + id).set({ status: answers[id].status, note: answers[id].note, updatedAt: new Date().toISOString() });
+      setSaved(id, "Saved");
+    } catch (e) {
+      setSaved(id, "Couldn't save (" + (e && e.code || "error") + "). Your answer is still on screen.");
+    }
+  }
+
+  function renderAnswers() {
+    steps.forEach((sec) => {
+      const id = sec.dataset.step;
+      const a = answers[id] || {};
+      sec.querySelectorAll(".verdict button").forEach((b) => b.setAttribute("aria-pressed", String(a.status === b.dataset.v)));
+      const ta = sec.querySelector("textarea");
+      if (ta && document.activeElement !== ta && ta.value !== (a.note || "")) ta.value = a.note || "";
+    });
+    renderRail();
+    renderSummary();
+  }
+
+  // ---------- rail + navigation ----------
+  function renderRail() {
+    rail.innerHTML = "";
+    steps.forEach((sec, i) => {
+      const li = document.createElement("li");
+      li.style.display = "contents";
+      const b = document.createElement("button");
+      b.type = "button";
+      if (i === current) b.setAttribute("aria-current", "step");
+      const st = (answers[sec.dataset.step] || {}).status;
+      const n = document.createElement("span"); n.className = "n";
+      n.textContent = sec.dataset.q ? String(i).padStart(2, "0") : (i === 0 ? "Start" : "End");
+      if (sec.dataset.q) { const d = document.createElement("i"); d.className = "dot" + (st ? " " + st : ""); n.appendChild(d); }
+      const t = document.createElement("span"); t.className = "t"; t.textContent = sec.dataset.title;
+      b.append(n, t);
+      b.addEventListener("click", () => go(i));
+      li.appendChild(b);
+      rail.appendChild(li);
+    });
+  }
+
+  function go(i) {
+    current = Math.max(0, Math.min(steps.length - 1, i));
+    steps.forEach((s, j) => (s.hidden = j !== current));
+    document.getElementById("prev").disabled = current === 0;
+    document.getElementById("next").disabled = current === steps.length - 1;
+    try { history.replaceState(null, "", "#step" + current); } catch (e) {}
+    renderRail();
+    const btn = rail.querySelectorAll("button")[current];
+    if (btn && btn.scrollIntoView) btn.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+  document.getElementById("prev").addEventListener("click", () => { go(current - 1); window.scrollTo({ top: 0 }); });
+  document.getElementById("next").addEventListener("click", () => { go(current + 1); window.scrollTo({ top: 0 }); });
+  document.addEventListener("keydown", (e) => {
+    const tag = (e.target && e.target.tagName) || "";
+    if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "ArrowRight") go(current + 1);
+    if (e.key === "ArrowLeft") go(current - 1);
+  });
+
+  // ---------- summary ----------
+  function renderSummary() {
+    const list = document.getElementById("s9-list");
+    list.innerHTML = "";
+    const c = { agreed: 0, change: 0, open: 0, none: 0 };
+    steps.forEach((sec, i) => {
+      if (!sec.dataset.q) return;
+      const a = answers[sec.dataset.step] || {};
+      c[a.status || "none"]++;
+      const li = document.createElement("li");
+      const st = document.createElement("span"); st.className = "st";
+      const d = document.createElement("i"); d.className = "dot" + (a.status ? " " + a.status : "");
+      st.append(d, document.createTextNode(a.status ? LABEL[a.status] : "Not discussed"));
+      const q = document.createElement("span"); q.className = "sq"; q.textContent = i + ". " + sec.dataset.title + ": " + sec.dataset.q;
+      li.append(st, q);
+      if (a.note) { const n = document.createElement("span"); n.className = "sn"; n.textContent = a.note; li.appendChild(n); }
+      const back = document.createElement("button"); back.type = "button"; back.textContent = "Go to step " + i;
+      back.addEventListener("click", () => go(i));
+      li.appendChild(back);
+      list.appendChild(li);
+    });
+    const counts = document.getElementById("s9-counts");
+    counts.innerHTML = "";
+    [["agreed", "Agreed"], ["change", "Change"], ["open", "Open"], ["none", "Not discussed"]].forEach(([k, l]) => {
+      const s = document.createElement("span");
+      const d = document.createElement("i"); d.className = "dot" + (k !== "none" ? " " + k : "");
+      s.append(d, document.createTextNode(c[k] + " " + l));
+      counts.appendChild(s);
+    });
+  }
+
+  document.getElementById("s9-copy").addEventListener("click", () => {
+    const lines = ["Time Tracker: tasks and billing, stakeholder walkthrough", ""];
+    steps.forEach((sec, i) => {
+      if (!sec.dataset.q) return;
+      const a = answers[sec.dataset.step] || {};
+      lines.push(i + ". " + sec.dataset.title + " [" + (a.status ? LABEL[a.status] : "Not discussed") + "]");
+      lines.push("   Q: " + sec.dataset.q);
+      if (a.note) lines.push("   Notes: " + a.note.replace(/\n/g, "\n          "));
+      lines.push("");
+    });
+    const text = lines.join("\n");
+    const out = document.getElementById("s9-copied");
+    const p = navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(text) : Promise.reject();
+    p.then(() => (out.textContent = "Copied."), () => {
+      out.textContent = "Copy isn't allowed here. Select the text below and copy it by hand.";
+      let pre = document.getElementById("s9-pre");
+      if (!pre) { pre = document.createElement("textarea"); pre.id = "s9-pre"; pre.rows = 10; pre.style.width = "100%"; out.after(pre); }
+      pre.value = text; pre.select();
+    });
+  });
+
+  // ---------- step 2: interactive quick add ----------
+  const TASKS = { nw: ["Design", "Development", "Ramp-up", "Rework"], int: ["Bench", "Internal work", "PTO", "Training"] };
+  const LAST = { nw: "Development", int: "Training" };
+  const s2p = document.getElementById("s2-proj"), s2t = document.getElementById("s2-task");
+  function fillTasks() {
+    const p = s2p.value;
+    s2t.innerHTML = "";
+    TASKS[p].forEach((t) => { const o = document.createElement("option"); o.textContent = t + (t === LAST[p] ? "  (last used)" : ""); o.value = t; s2t.appendChild(o); });
+    s2t.value = LAST[p];
+  }
+  s2p.addEventListener("change", () => { fillTasks(); document.getElementById("s2-msg").textContent = "Task changed to the one you last used on " + s2p.options[s2p.selectedIndex].text + "."; });
+  fillTasks();
+  function stepper(form, outId) {
+    form.querySelectorAll(".stepper button[data-d]").forEach((b) => b.addEventListener("click", () => {
+      const o = document.getElementById(outId);
+      o.textContent = Math.max(0.5, Math.min(12, parseFloat(o.textContent) + parseFloat(b.dataset.d))).toFixed(1);
+    }));
+  }
+  stepper(document.getElementById("s2-form"), "s2-h");
+  let s2saved = false;
+  document.getElementById("s2-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const h = parseFloat(document.getElementById("s2-h").textContent);
+    const msg = document.getElementById("s2-msg");
+    if (s2saved) { msg.textContent = "Already saved for Wed 14 Oct in this demo."; return; }
+    s2saved = true;
+    const li = document.createElement("li"); li.className = "flash";
+    li.innerHTML = '<span class="d">Wed 14</span><span class="bar"><i style="width:' + Math.min(100, h / 8 * 100) + '%"></i></span><span class="h">' + h.toFixed(1) + "</span>";
+    document.getElementById("s2-days").appendChild(li);
+    setTimeout(() => li.classList.remove("flash"), 50);
+    document.getElementById("s2-total").textContent = (40 + h).toFixed(1) + " h";
+    msg.textContent = "Saved: " + h.toFixed(1) + " h on " + s2p.options[s2p.selectedIndex].text + " · " + s2t.value + ".";
+  });
+
+  // ---------- step 5: legacy line edit ----------
+  const s5f = document.getElementById("s5-form");
+  stepper(s5f, "s5-h");
+  document.getElementById("s5-edit").addEventListener("click", () => { s5f.hidden = false; document.getElementById("s5-msg").textContent = ""; document.getElementById("s5-task").focus(); });
+  document.getElementById("s5-task").addEventListener("change", (e) => e.target.classList.remove("invalid"));
+  s5f.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const t = document.getElementById("s5-task"), m = document.getElementById("s5-msg");
+    if (!t.value) { t.classList.add("invalid"); m.className = "msg err"; m.textContent = "Choose a task to save this change. Lines from before tasks existed need one when edited."; return; }
+    const row = document.getElementById("s5-legacy");
+    row.querySelector(".what").textContent = "Northwind — Website rebuild · " + t.value;
+    document.getElementById("s5-legacy-h").textContent = document.getElementById("s5-h").textContent;
+    m.className = "msg ok"; m.textContent = "Saved.";
+    setTimeout(() => (s5f.hidden = true), 900);
+  });
+  document.getElementById("s5-del").addEventListener("click", () => {
+    const m = document.getElementById("s5-msg");
+    m.className = "msg ok"; m.textContent = "Delete works without a task. (Not deleted in this demo.)";
+  });
+
+  // ---------- step 6: approver override ----------
+  const S6 = {
+    a: { story: "Daniel picks the order line in the empty cell. The app has no screen for this. The approver does it in Odoo, where they already validate the month.", sol: true, hours: "2.0", app: false },
+    b: { story: "A day later Maria corrects the hours from 2.0 to 2.5. The app saves the new hours and leaves Daniel's billing alone, so the line stays billed.", sol: true, hours: "2.5", app: true, msg: ["ok", "Saved."], task: "Rework" },
+    c: { story: "Maria tries to move the line to Development. The app refuses: moving it could silently drop or carry over Daniel's decision. She asks Daniel instead.", sol: true, hours: "2.5", app: true, msg: ["err", "Daniel has set how this line is billed. Ask your approver to move it to another task."], task: "Development" }
+  };
+  let s6set = false;
+  function s6(k) {
+    const s = S6[k];
+    document.querySelectorAll("[data-s6]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.s6 === k)));
+    document.getElementById("s6-story").textContent = s.story;
+    document.getElementById("s6-h").textContent = s.hours;
+    const cell = document.getElementById("s6-sol");
+    cell.innerHTML = s6set || k !== "a" ? "S00042 · Developer" : '<button type="button" class="oselect" id="s6-pick"><span class="ph">None (click to set)</span></button>';
+    document.getElementById("s6-row").classList.toggle("hl", true);
+    const pick = document.getElementById("s6-pick");
+    if (pick) pick.addEventListener("click", () => { s6set = true; s6("a"); });
+    document.getElementById("s6-app").hidden = !s.app;
+    if (s.app) {
+      document.getElementById("s6-task").textContent = s.task;
+      const m = document.getElementById("s6-msg"); m.className = "msg " + s.msg[0]; m.textContent = s.msg[1];
+    }
+  }
+  document.querySelectorAll("[data-s6]").forEach((b) => b.addEventListener("click", () => s6(b.dataset.s6)));
+  s6("a");
+
+  // ---------- start ----------
+  const m = /^#step(\d+)$/.exec(location.hash || "");
+  go(m ? parseInt(m[1], 10) : 0);
+  renderAnswers();
+
+  (async () => {
+    try {
+      db = window.claude && window.claude.use ? await window.claude.use("db") : null;
+    } catch (e) { db = null; }
+    if (!db) { syncEl.textContent = "Answers aren't saved in this view"; syncEl.classList.add("off"); return; }
+    col = db.collection("decisions");
+    syncEl.textContent = "Answers save automatically";
+    col.onSnapshot((snap) => {
+      (snap.docs || []).forEach((d) => {
+        const id = String(d.id).replace(/^s/, "");
+        const data = typeof d.data === "function" ? d.data() : d.data;
+        if (data) answers[id] = { status: data.status || null, note: data.note || "" };
+      });
+      renderAnswers();
+    }, (err) => { syncEl.textContent = "Lost connection: answers may not save (" + (err && err.code || "error") + ")"; syncEl.classList.add("off"); });
+  })();
+})();
+</script>
