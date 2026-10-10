@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -80,5 +80,5 @@ async def check_readiness(
         profile_loaded=profile_loaded,
         db_reachable=db_reachable,
         oldest_pending_created_at=oldest,
-        now=datetime.now(timezone.utc),
+        now=datetime.now(UTC),
     )

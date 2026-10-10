@@ -114,8 +114,16 @@ async def test_a_cached_no_lock_value_counts_as_known():
 
 
 def _assignment():
-    return Assignment(id="internal", kind="internal", project_id=1, so_line_id=None, label="Internal",
-                      is_default=True, start_date=None, end_date=None)
+    return Assignment(
+        id="internal",
+        kind="internal",
+        project_id=1,
+        so_line_id=None,
+        label="Internal",
+        is_default=True,
+        start_date=None,
+        end_date=None,
+    )
 
 
 async def test_assignments_fall_back_to_last_known_when_odoo_is_down(monkeypatch):
@@ -150,15 +158,17 @@ async def test_assignments_with_no_last_known_still_raise(monkeypatch):
 
 def _entries(*odoo_results):
     outbox = MagicMock()
-    outbox.pending_hours_for = AsyncMock(return_value=Decimal("0"))
-    return EntryService(ScriptedOdoo(*odoo_results), MagicMock(), MagicMock(), MagicMock(), outbox, 1, Decimal("10"))
+    outbox.pending_hours_for = AsyncMock(return_value=Decimal(0))
+    return EntryService(ScriptedOdoo(*odoo_results), MagicMock(), MagicMock(), MagicMock(), outbox, 1, Decimal(10))
 
 
 DAY = date(2026, 9, 24)
 
 
 async def test_daily_hours_fall_back_to_the_day_as_last_seen():
-    svc = _entries([{"id": 7, "unit_amount": 2.5}, {"id": 8, "unit_amount": 1.0}], OdooUnavailable("down"), OdooUnavailable("down"))
+    svc = _entries(
+        [{"id": 7, "unit_amount": 2.5}, {"id": 8, "unit_amount": 1.0}], OdooUnavailable("down"), OdooUnavailable("down")
+    )
     assert await svc._existing_hours(1, DAY) == Decimal("3.5")  # live
     assert await svc._existing_hours(1, DAY) == Decimal("3.5")  # outage: last-known
     assert await svc._existing_hours(1, DAY, exclude_odoo_line_id=7) == Decimal("1.0")  # an edit excludes its own line
@@ -188,6 +198,6 @@ async def test_a_day_never_seen_stays_unknown_rather_than_guessed():
 
 async def test_pending_rows_still_count_during_the_outage():
     svc = _entries([{"id": 7, "unit_amount": 2.0}], OdooUnavailable("down"))
-    svc._outbox.pending_hours_for = AsyncMock(side_effect=[Decimal("0"), Decimal("4.0")])
+    svc._outbox.pending_hours_for = AsyncMock(side_effect=[Decimal(0), Decimal("4.0")])
     await svc._existing_hours(1, DAY)
     assert await svc._existing_hours(1, DAY) == Decimal("6.0")  # last-known 2.0 + 4.0 queued

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date
 
 from tti.ops.digest import Digest, OutboxItem, last_working_days, render
 
@@ -6,7 +6,11 @@ from tti.ops.digest import Digest, OutboxItem, last_working_days, render
 def test_working_days_skip_weekends():
     # Thursday 2026-09-24 -> Wed, Tue, Mon, Fri, Thu
     assert last_working_days(date(2026, 9, 24)) == [
-        date(2026, 9, 23), date(2026, 9, 22), date(2026, 9, 21), date(2026, 9, 18), date(2026, 9, 17),
+        date(2026, 9, 23),
+        date(2026, 9, 22),
+        date(2026, 9, 21),
+        date(2026, 9, 18),
+        date(2026, 9, 17),
     ]
 
 
@@ -34,8 +38,9 @@ def test_digest_body_has_no_money_words():
 
 
 def test_seconds_until_rolls_to_tomorrow_once_hour_passed():
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from tti.ops.scheduler import seconds_until
 
-    assert seconds_until(datetime(2026, 9, 24, 6, 0, tzinfo=timezone.utc), 7) == 3600
-    assert seconds_until(datetime(2026, 9, 24, 7, 0, tzinfo=timezone.utc), 7) == 86400
+    assert seconds_until(datetime(2026, 9, 24, 6, 0, tzinfo=UTC), 7) == 3600
+    assert seconds_until(datetime(2026, 9, 24, 7, 0, tzinfo=UTC), 7) == 86400

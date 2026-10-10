@@ -19,9 +19,7 @@ async def test_mapped_employee_gets_one_paid_one_unpaid_and_internal(assignment_
 
 async def test_flat_rate_assignment_shape_matches_tm(assignment_service):
     tm_paid = next(a for a in await assignment_service.list_for_employee(TM_EMPLOYEE_ID) if a.kind == "paid")
-    flat_paid = next(
-        a for a in await assignment_service.list_for_employee(FLAT_RATE_EMPLOYEE_ID) if a.kind == "paid"
-    )
+    flat_paid = next(a for a in await assignment_service.list_for_employee(FLAT_RATE_EMPLOYEE_ID) if a.kind == "paid")
 
     assert {f.name for f in dataclasses.fields(tm_paid)} == {f.name for f in dataclasses.fields(flat_paid)}
     assert isinstance(flat_paid.so_line_id, int)

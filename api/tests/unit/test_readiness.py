@@ -1,12 +1,18 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from tti.ops.readiness import evaluate
 
-NOW = datetime(2026, 9, 24, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 9, 24, 12, 0, tzinfo=UTC)
 
 
 def _eval(**overrides):
-    args = dict(odoo_reachable=True, profile_loaded=True, db_reachable=True, oldest_pending_created_at=None, now=NOW)
+    args = {
+        "odoo_reachable": True,
+        "profile_loaded": True,
+        "db_reachable": True,
+        "oldest_pending_created_at": None,
+        "now": NOW,
+    }
     return evaluate(**{**args, **overrides})
 
 

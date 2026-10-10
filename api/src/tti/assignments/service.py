@@ -17,7 +17,7 @@ from dataclasses import dataclass, replace
 from tti.config import OdooProfile
 from tti.lastknown import LastKnownCache
 from tti.odoo.client import OdooClient
-from tti.odoo.errors import OdooUncertain, OdooUnavailable
+from tti.odoo.errors import OdooUnavailable, OdooUncertain
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class AssignmentService:
 
         try:
             assignments = await self._build(employee_id)
-        except (OdooUnavailable, OdooUncertain):
+        except OdooUnavailable, OdooUncertain:
             # An outage must not stop someone saving an entry against an
             # assignment they held a minute ago (docs/decisions/0010).
             last_known = self._cache.last_known(employee_id)

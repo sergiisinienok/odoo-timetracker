@@ -6,7 +6,7 @@ import logging
 
 from tti.logging import JSONFormatter
 
-from .conftest import BASE_URL, ME, SECRETS
+from .conftest import BASE_URL, SECRETS
 
 
 def _log_line(monkeypatch, message: str, **extra) -> str:
@@ -25,7 +25,7 @@ def _log_line(monkeypatch, message: str, **extra) -> str:
         try:
             raise RuntimeError(f"auth failed with key {SECRETS['odoo_key']}")
         except RuntimeError:
-            logger.error(message, exc_info=True, extra=extra)
+            logger.exception(message, extra=extra)
     finally:
         logger.handlers = []
     return stream.getvalue()

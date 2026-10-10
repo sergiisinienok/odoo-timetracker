@@ -33,7 +33,7 @@ class Settings:
     profile_path: Path = _REPO_ROOT_PROFILE
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         return cls(
             odoo_url=os.environ["ODOO_URL"],
             odoo_db=os.environ["ODOO_DB"],
@@ -72,7 +72,7 @@ class OdooProfile:
         return self.data.get("odoo_version")
 
     @classmethod
-    def load(cls, path: Path) -> "OdooProfile | None":
+    def load(cls, path: Path) -> OdooProfile | None:
         try:
             with path.open() as f:
                 return cls(data=json.load(f))

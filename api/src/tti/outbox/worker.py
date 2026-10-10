@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -44,7 +44,7 @@ async def process_one_pending_row(
     False if nothing is currently due.
     """
     async with session_factory() as session:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         row = (
             await session.execute(
                 select(OutboxRow)
@@ -63,7 +63,7 @@ async def process_one_pending_row(
 
 
 async def prune_old_synced_rows(session_factory: async_sessionmaker[AsyncSession]) -> int:
-    cutoff = datetime.now(timezone.utc) - PRUNE_AGE
+    cutoff = datetime.now(UTC) - PRUNE_AGE
     async with session_factory() as session:
         result = await session.execute(
             delete(OutboxRow).where(OutboxRow.state == OutboxState.SYNCED.value, OutboxRow.updated_at < cutoff)
@@ -78,7 +78,7 @@ async def run_worker_loop(
     profile: OdooProfile,
     periods: PeriodService,
 ) -> None:
-    last_prune = datetime.now(timezone.utc)
+    last_prune = datetime.now(UTC)
     while True:
         try:
             while await process_one_pending_row(session_factory, odoo, profile, periods):
@@ -86,7 +86,7 @@ async def run_worker_loop(
         except Exception:
             logger.exception("outbox worker: error processing a row")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if now - last_prune >= timedelta(seconds=PRUNE_INTERVAL_SECONDS):
             try:
                 pruned = await prune_old_synced_rows(session_factory)

@@ -35,9 +35,7 @@ def test_falls_back_to_company_validated_through_when_employee_has_none():
 def test_employee_signal_takes_priority_over_company_signal():
     # Employee validated further than the company-wide date — the more
     # specific (employee) signal wins.
-    assert (
-        resolve_period_state(date(2026, 9, 15), date(2026, 9, 30), date(2026, 6, 30)) == PeriodState.LOCKED
-    )
+    assert resolve_period_state(date(2026, 9, 15), date(2026, 9, 30), date(2026, 6, 30)) == PeriodState.LOCKED
 
 
 def test_no_signal_at_all_resolves_open():

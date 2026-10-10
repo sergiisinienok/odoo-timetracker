@@ -33,7 +33,9 @@ async def test_paid_entry_lands_with_correct_so_line(odoo_client, entry_service,
         await _cleanup(odoo_client, session_factory, entry)
 
 
-async def test_unpaid_entry_stays_unpaid_after_a_subsequent_unrelated_write(odoo_client, entry_service, session_factory):
+async def test_unpaid_entry_stays_unpaid_after_a_subsequent_unrelated_write(
+    odoo_client, entry_service, session_factory
+):
     entry = await entry_service.create_entry(
         employee_id=TM_EMPLOYEE_ID, assignment_id="project:2:unpaid", date=TODAY, hours=1.0, note="unpaid test"
     )
@@ -43,9 +45,7 @@ async def test_unpaid_entry_stays_unpaid_after_a_subsequent_unrelated_write(odoo
         # An unrelated write — just the description — shouldn't resurrect
         # so_line via any auto-fill logic on the Odoo side.
         await odoo_client.execute_kw("account.analytic.line", "write", [[entry.id], {"name": "unpaid test, edited"}])
-        [record] = await odoo_client.execute_kw(
-            "account.analytic.line", "read", [[entry.id]], {"fields": ["so_line"]}
-        )
+        [record] = await odoo_client.execute_kw("account.analytic.line", "read", [[entry.id]], {"fields": ["so_line"]})
         assert record["so_line"] is False
     finally:
         await _cleanup(odoo_client, session_factory, entry)

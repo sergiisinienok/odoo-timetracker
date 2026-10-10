@@ -36,13 +36,12 @@ from tti.domain.validity import validate_within_assignment
 from tti.entries.errors import AssignmentNotHeld, EntryNotOwned
 from tti.lastknown import LastKnownCache
 from tti.odoo.client import OdooClient
-from tti.odoo.errors import OdooUncertain, OdooUnavailable
+from tti.odoo.errors import OdooUnavailable, OdooUncertain
 from tti.outbox.errors import OdooWriteRejected
 from tti.outbox.models import OutboxOp, OutboxRow, OutboxState
 from tti.outbox.service import PERIOD_LOCKED_PREFIX, OutboxService
 from tti.periods.errors import PeriodLocked
 from tti.periods.service import PeriodService
-
 
 logger = logging.getLogger(__name__)
 
@@ -338,7 +337,7 @@ class EntryService:
                 [[("employee_id", "=", employee_id), ("date", "=", entry_date.isoformat())]],
                 {"fields": ["id", "unit_amount"]},
             )
-        except (OdooUnavailable, OdooUncertain):
+        except OdooUnavailable, OdooUncertain:
             # An outage must not refuse an entry over a limit check. Fall back
             # to the day as last seen; with no last-known view the limit
             # cannot be checked at all, and refusing is the only honest answer.
@@ -354,7 +353,7 @@ class EntryService:
             lines = [(r["id"], Decimal(str(r["unit_amount"]))) for r in records]
             self._day_lines.put((employee_id, entry_date), lines)
 
-        odoo_total = sum((h for line_id, h in lines if line_id != exclude_odoo_line_id), Decimal("0"))
+        odoo_total = sum((h for line_id, h in lines if line_id != exclude_odoo_line_id), Decimal(0))
         pending_total = await self._outbox.pending_hours_for(employee_id, entry_date)
         return odoo_total + pending_total
 

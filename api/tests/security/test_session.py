@@ -32,7 +32,9 @@ async def test_expired_session_is_refused(client):
 async def test_session_signed_with_another_secret_is_refused(client):
     now = int(time.time())
     forged = jwt.encode(
-        {"employee_id": ME, "timezone": "UTC", "iat": now, "exp": now + 600}, "not-the-real-secret-at-all-0123456789", algorithm="HS256"
+        {"employee_id": ME, "timezone": "UTC", "iat": now, "exp": now + 600},
+        "not-the-real-secret-at-all-0123456789",
+        algorithm="HS256",
     )
     r = await client.get("/entries", cookies={COOKIE_NAME: forged})
     assert r.status_code == 401
@@ -43,8 +45,12 @@ async def test_session_cookie_flags(client, monkeypatch):
 
     class FakeHttp:
         def __init__(self, *a, **k): ...
-        async def __aenter__(self): return self
-        async def __aexit__(self, *a): return False
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
         async def post(self, *a, **k):
             return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"id_token": "t"})
 
@@ -61,9 +67,7 @@ async def test_session_cookie_flags(client, monkeypatch):
 
     app.state.app_state["employee_resolver"] = FakeResolver()
 
-    r = await client.get(
-        "/auth/google/callback", params={"code": "c", "state": "s"}, cookies={"tti_oauth_state": "s"}
-    )
+    r = await client.get("/auth/google/callback", params={"code": "c", "state": "s"}, cookies={"tti_oauth_state": "s"})
     assert r.status_code == 307
     cookie = next(v for k, v in r.headers.multi_items() if k == "set-cookie" and v.startswith(f"{COOKIE_NAME}="))
     lowered = cookie.lower()

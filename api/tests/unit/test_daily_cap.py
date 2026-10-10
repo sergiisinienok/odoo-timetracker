@@ -25,4 +25,4 @@ def test_existing_alone_already_at_cap_plus_any_new_hours_is_rejected():
 
 
 def test_zero_new_hours_at_exactly_the_cap_is_accepted():
-    validate_daily_cap(Decimal("8.00"), Decimal("0"), Decimal("8.00"))  # no exception
+    validate_daily_cap(Decimal("8.00"), Decimal(0), Decimal("8.00"))  # no exception

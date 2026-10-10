@@ -12,14 +12,11 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Hashable
-from typing import Generic, TypeVar
-
-V = TypeVar("V")
 
 DEFAULT_CEILING_SECONDS = 24 * 60 * 60
 
 
-class LastKnownCache(Generic[V]):
+class LastKnownCache[V]:
     def __init__(
         self, *, ttl: float, ceiling: float = DEFAULT_CEILING_SECONDS, clock: Callable[[], float] = time.monotonic
     ) -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -22,10 +22,8 @@ def seconds_until(now: datetime, hour_utc: int) -> float:
     return (target - now).total_seconds()
 
 
-async def send_digest_now(
-    odoo: OdooClient, session_factory: async_sessionmaker[AsyncSession], recipients: str
-) -> int:
-    now = datetime.now(timezone.utc)
+async def send_digest_now(odoo: OdooClient, session_factory: async_sessionmaker[AsyncSession], recipients: str) -> int:
+    now = datetime.now(UTC)
     digest = await gather(odoo, session_factory, now)
     subject, body = render(digest, now.date())
     mail_id = await send(odoo, recipients, subject, body)
@@ -40,8 +38,8 @@ async def run_digest_loop(
         logger.warning("OPS_DIGEST_TO is empty — daily digest disabled")
         return
     while True:
-        await asyncio.sleep(seconds_until(datetime.now(timezone.utc), hour_utc))
+        await asyncio.sleep(seconds_until(datetime.now(UTC), hour_utc))
         try:
             await send_digest_now(odoo, session_factory, recipients)
         except Exception:  # a failed digest must not take the outbox worker down with it
-            logger.error("ops digest failed", exc_info=True)
+            logger.exception("ops digest failed")

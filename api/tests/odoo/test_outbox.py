@@ -21,16 +21,13 @@ import socket
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import delete, select
+from proxy import FaultProxy
+from sqlalchemy import delete
 
 from tti.odoo.client import OdooClient
-from tti.odoo.errors import OdooRejected, OdooUnavailable, OdooUncertain
 from tti.outbox.models import OutboxRow, OutboxState
 from tti.outbox.service import OutboxService
 from tti.outbox.worker import process_one_pending_row
-from tti.periods.service import PeriodService
-
-from proxy import FaultProxy
 
 pytestmark = pytest.mark.odoo
 
@@ -80,7 +77,9 @@ async def proxy():
 async def proxied_odoo_client(proxy):
     import os
 
-    async with OdooClient(url=proxy.url, db=os.environ["ODOO_DB"], user=os.environ["ODOO_USER"], api_key=os.environ["ODOO_KEY"]) as client:
+    async with OdooClient(
+        url=proxy.url, db=os.environ["ODOO_DB"], user=os.environ["ODOO_USER"], api_key=os.environ["ODOO_KEY"]
+    ) as client:
         yield client
 
 
@@ -109,7 +108,7 @@ async def _force_due(session_factory, outbox_id) -> None:
     microsecond, and next_attempt <= now() is a strict comparison."""
     async with session_factory() as session:
         row = await session.get(OutboxRow, outbox_id)
-        row.next_attempt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=5)
+        row.next_attempt = datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=5)
         await session.commit()
 
 
@@ -267,7 +266,7 @@ async def test_two_workers_do_not_double_process_a_row(session_factory, odoo_cli
             # Explicit, comfortably in the past — not the next_attempt=now()
             # server default, which races against this test process's own
             # now() moments later. See _force_due's comment.
-            next_attempt=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=5),
+            next_attempt=datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=5),
         )
         session.add(row)
         await session.commit()

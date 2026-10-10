@@ -62,7 +62,7 @@ def _settings() -> Settings:
         session_secret=SECRETS["session_secret"],
         public_base_url=BASE_URL,
         internal_project_id=1,
-        daily_hour_cap=Decimal("10"),
+        daily_hour_cap=Decimal(10),
         profile_path=Path("/nonexistent"),
     )
 

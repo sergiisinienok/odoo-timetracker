@@ -21,7 +21,7 @@ from typing import Any, Self
 
 import httpx
 
-from tti.odoo.errors import OdooRejected, OdooUncertain, OdooUnavailable
+from tti.odoo.errors import OdooRejected, OdooUnavailable, OdooUncertain
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +60,7 @@ class OdooClient:
         result = await self._call("common", "version", [])
         return result["server_version"]
 
-    async def execute_kw(
-        self, model: str, method: str, args: list[Any], kwargs: dict[str, Any] | None = None
-    ) -> Any:
+    async def execute_kw(self, model: str, method: str, args: list[Any], kwargs: dict[str, Any] | None = None) -> Any:
         """The single primitive; everything else that talks to a model is
         built on this."""
         if self._uid is None:

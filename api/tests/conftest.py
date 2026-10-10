@@ -13,6 +13,4 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=True)
 # .env's DATABASE_URL points at the "db" hostname, which only resolves
 # inside the docker-compose network. Tests run on the host (docker-compose.yml
 # publishes db's port for exactly this) — swap in localhost.
-os.environ["DATABASE_URL"] = (
-    f"postgresql+psycopg://tti:{os.environ['POSTGRES_PASSWORD']}@localhost:5432/tti"
-)
+os.environ["DATABASE_URL"] = f"postgresql+psycopg://tti:{os.environ['POSTGRES_PASSWORD']}@localhost:5432/tti"

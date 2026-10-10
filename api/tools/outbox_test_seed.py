@@ -75,9 +75,7 @@ def main() -> None:
     command = sys.argv[1]
     if command == "insert":
         employee_id, date_str, hours_str, note = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
-        outbox_id = asyncio.run(
-            insert(int(employee_id), date_type.fromisoformat(date_str), Decimal(hours_str), note)
-        )
+        outbox_id = asyncio.run(insert(int(employee_id), date_type.fromisoformat(date_str), Decimal(hours_str), note))
         print(outbox_id)
     elif command == "delete":
         asyncio.run(delete_row(UUID(sys.argv[2])))

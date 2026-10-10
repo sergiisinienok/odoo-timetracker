@@ -16,18 +16,14 @@ from collections import defaultdict
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete
+from switchable import SwitchableOdoo
 
-from tti.assignments.service import AssignmentService
-from tti.config import Settings
-from tti.entries.service import EntryService
 from tti.outbox.models import OutboxRow, OutboxState
 from tti.outbox.service import OutboxService
 from tti.outbox.worker import process_one_pending_row
 from tti.periods.errors import PeriodLocked
 from tti.periods.service import PeriodService
-
-from switchable import SwitchableOdoo
 
 pytestmark = pytest.mark.odoo
 
@@ -147,7 +143,7 @@ async def test_queued_write_is_not_applied_once_its_month_is_locked(
         period_service.invalidate(EMP)
         async with session_factory() as s:  # make the retry due now
             row = await s.get(OutboxRow, queued.outbox_id)
-            row.next_attempt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)
+            row.next_attempt = datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=1)
             await s.commit()
 
         await process_one_pending_row(session_factory, odoo_client, profile, period_service)
@@ -177,7 +173,7 @@ async def outbox_call(outbox, *, op, **kw):
 async def _make_due_and_drain(odoo_client, session_factory, profile, period_service, outbox_id):
     async with session_factory() as s:
         row = await s.get(OutboxRow, outbox_id)
-        row.next_attempt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)
+        row.next_attempt = datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=1)
         await s.commit()
     await process_one_pending_row(session_factory, odoo_client, profile, period_service)
     async with session_factory() as s:
@@ -191,13 +187,31 @@ async def test_queued_update_and_delete_are_not_applied_once_their_month_is_lock
     line = await odoo_client.execute_kw(
         "account.analytic.line",
         "create",
-        [{"employee_id": EMP, "project_id": 1, "date": day.isoformat(), "unit_amount": 1.0, "name": "phase2-gate queued edit"}],
+        [
+            {
+                "employee_id": EMP,
+                "project_id": 1,
+                "date": day.isoformat(),
+                "unit_amount": 1.0,
+                "name": "phase2-gate queued edit",
+            }
+        ],
     )
     ids = []
     try:
         _, upd = await _queue_while_down(
-            odoo_client, session_factory, profile, period_service, op="update", odoo_line_id=line, entry_date=day,
-            hours=Decimal("2.0"), assignment_id="internal", project_id=1, so_line_id=None, note="phase2-gate queued edit (edited)",
+            odoo_client,
+            session_factory,
+            profile,
+            period_service,
+            op="update",
+            odoo_line_id=line,
+            entry_date=day,
+            hours=Decimal("2.0"),
+            assignment_id="internal",
+            project_id=1,
+            so_line_id=None,
+            note="phase2-gate queued edit (edited)",
         )
         _, dele = await _queue_while_down(
             odoo_client, session_factory, profile, period_service, op="delete", odoo_line_id=line, entry_date=day
@@ -207,9 +221,14 @@ async def test_queued_update_and_delete_are_not_applied_once_their_month_is_lock
 
         for outbox_id in ids:
             row = await _make_due_and_drain(odoo_client, session_factory, profile, period_service, outbox_id)
-            assert row.state == OutboxState.FAILED.value and row.last_error.startswith("period_locked: "), (row.op, row.state)
+            assert row.state == OutboxState.FAILED.value and row.last_error.startswith("period_locked: "), (
+                row.op,
+                row.state,
+            )
 
-        [rec] = await odoo_client.execute_kw("account.analytic.line", "read", [[line]], {"fields": ["unit_amount", "name"]})
+        [rec] = await odoo_client.execute_kw(
+            "account.analytic.line", "read", [[line]], {"fields": ["unit_amount", "name"]}
+        )
         assert rec["unit_amount"] == 1.0 and rec["name"] == "phase2-gate queued edit"  # neither change was applied
     finally:
         await odoo_client.execute_kw("account.analytic.line", "unlink", [[line]])
@@ -227,16 +246,29 @@ async def test_a_create_that_reached_odoo_before_the_lock_is_still_reconciled_no
     down.down = True
     outbox = OutboxService(session_factory, down, profile, period_service)
     queued = await outbox.enqueue_create(
-        employee_id=EMP, entry_date=day, hours=Decimal("1.0"), assignment_id="internal", project_id=1,
-        so_line_id=None, note="phase2-gate reconciled before lock",
+        employee_id=EMP,
+        entry_date=day,
+        hours=Decimal("1.0"),
+        assignment_id="internal",
+        project_id=1,
+        so_line_id=None,
+        note="phase2-gate reconciled before lock",
     )
     try:
         # It did reach Odoo: create the line the way the worker's create would (same app entry id).
         await odoo_client.execute_kw(
             "account.analytic.line",
             "create",
-            [{"employee_id": EMP, "project_id": 1, "date": day.isoformat(), "unit_amount": 1.0,
-              "name": "phase2-gate reconciled before lock", profile.app_entry_id_field: str(queued.outbox_id)}],
+            [
+                {
+                    "employee_id": EMP,
+                    "project_id": 1,
+                    "date": day.isoformat(),
+                    "unit_amount": 1.0,
+                    "name": "phase2-gate reconciled before lock",
+                    profile.app_entry_id_field: str(queued.outbox_id),
+                }
+            ],
         )
         await _set_validated_through(odoo_client, day.isoformat())
 
@@ -249,9 +281,7 @@ async def test_a_create_that_reached_odoo_before_the_lock_is_still_reconciled_no
         await _forget_outbox(session_factory, [queued.outbox_id])
 
 
-async def test_lock_check_with_odoo_down_leaves_the_row_pending_not_failed(
-    odoo_client, session_factory, profile
-):
+async def test_lock_check_with_odoo_down_leaves_the_row_pending_not_failed(odoo_client, session_factory, profile):
     """If Odoo cannot answer the lock check, the row waits — it is neither
     written unchecked nor failed. (First attempt only: a *retry* while Odoo is
     still down trips a separate bug in the reconcile step, docs/decisions/0010
@@ -261,8 +291,13 @@ async def test_lock_check_with_odoo_down_leaves_the_row_pending_not_failed(
     outbox = OutboxService(session_factory, down, profile, periods)
     down.down = True
     queued = await outbox.enqueue_create(
-        employee_id=EMP, entry_date=TODAY, hours=Decimal("1.0"), assignment_id="internal", project_id=1,
-        so_line_id=None, note="phase2-gate check while down",
+        employee_id=EMP,
+        entry_date=TODAY,
+        hours=Decimal("1.0"),
+        assignment_id="internal",
+        project_id=1,
+        so_line_id=None,
+        note="phase2-gate check while down",
     )
     try:
         assert queued.state == OutboxState.PENDING
@@ -289,7 +324,7 @@ async def test_app_view_reconciles_with_odoo_for_a_full_month(
     ]
     assignments = await assignment_service.list_for_employee(EMP)
     hours_cycle = [0.5, 1.0, 1.5, 2.0, 4.0]
-    started_at = datetime.datetime.now(datetime.timezone.utc)
+    started_at = datetime.datetime.now(datetime.UTC)
     created = []
     try:
         for i, day in enumerate(days):
@@ -308,7 +343,12 @@ async def test_app_view_reconciles_with_odoo_for_a_full_month(
         # Exercise edit and delete too, not just create.
         for e in created[:3]:
             await entry_service.update_entry(
-                employee_id=EMP, odoo_line_id=e.id, assignment_id=e.assignment_id, date=e.date, hours=1.25, note=e.note + " (edited)"
+                employee_id=EMP,
+                odoo_line_id=e.id,
+                assignment_id=e.assignment_id,
+                date=e.date,
+                hours=1.25,
+                note=e.note + " (edited)",
             )
         for e in created[3:5]:
             await entry_service.delete_entry(employee_id=EMP, odoo_line_id=e.id)
@@ -317,7 +357,13 @@ async def test_app_view_reconciles_with_odoo_for_a_full_month(
         odoo_rows = await odoo_client.execute_kw(
             "account.analytic.line",
             "search_read",
-            [[("employee_id", "=", EMP), ("date", ">=", f"{year}-{month:02d}-01"), ("date", "<=", f"{year}-{month:02d}-{last_day:02d}")]],
+            [
+                [
+                    ("employee_id", "=", EMP),
+                    ("date", ">=", f"{year}-{month:02d}-01"),
+                    ("date", "<=", f"{year}-{month:02d}-{last_day:02d}"),
+                ]
+            ],
             {"fields": ["date", "unit_amount", "name", "project_id"]},
         )
 
@@ -328,7 +374,12 @@ async def test_app_view_reconciles_with_odoo_for_a_full_month(
 
         for line_id, r in odoo_by_id.items():
             e = app_by_id[line_id]
-            assert (e.date, e.hours, e.note, e.project_id) == (r["date"], r["unit_amount"], r["name"], r["project_id"][0]), line_id
+            assert (e.date, e.hours, e.note, e.project_id) == (
+                r["date"],
+                r["unit_amount"],
+                r["name"],
+                r["project_id"][0],
+            ), line_id
 
         def per_day(items):
             totals = defaultdict(Decimal)
@@ -338,7 +389,9 @@ async def test_app_view_reconciles_with_odoo_for_a_full_month(
 
         assert per_day((e.date, e.hours) for e in app_view) == per_day((r["date"], r["unit_amount"]) for r in odoo_rows)
         assert sum(Decimal(str(e.hours)) for e in app_view) == sum(Decimal(str(r["unit_amount"])) for r in odoo_rows)
-        assert any(e.date == f"{year}-{month:02d}-{last_day:02d}" for e in app_view), "last day of the month must appear"
+        assert any(e.date == f"{year}-{month:02d}-{last_day:02d}" for e in app_view), (
+            "last day of the month must appear"
+        )
     finally:
         for lid in await _lines_named(odoo_client, "phase2-gate reconcile"):
             await odoo_client.execute_kw("account.analytic.line", "unlink", [[lid]])

@@ -27,7 +27,7 @@ from tti.config import OdooProfile
 from tti.domain.period import PeriodState, resolve_period_state
 from tti.lastknown import LastKnownCache
 from tti.odoo.client import OdooClient
-from tti.odoo.errors import OdooUncertain, OdooUnavailable
+from tti.odoo.errors import OdooUnavailable, OdooUncertain
 from tti.periods.errors import PeriodLocked
 
 _CACHE_TTL_SECONDS = 5 * 60
@@ -82,7 +82,7 @@ class PeriodService:
             [record] = await self._odoo.execute_kw(
                 "hr.employee", "read", [[employee_id]], {"fields": [self._profile.employee_validated_through]}
             )
-        except (OdooUnavailable, OdooUncertain):
+        except OdooUnavailable, OdooUncertain:
             last_known = self._cache.last_known(employee_id) if allow_last_known else None
             if last_known is None:
                 raise

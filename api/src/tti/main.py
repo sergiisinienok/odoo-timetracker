@@ -16,8 +16,8 @@ from tti.entries.service import EntryService
 from tti.logging import configure_logging
 from tti.odoo.client import OdooClient
 from tti.odoo.errors import OdooError, OdooRejected
-from tti.outbox.service import OutboxService
 from tti.ops.readiness import check_readiness
+from tti.outbox.service import OutboxService
 from tti.periods.service import PeriodService
 from tti.routes.assignments import router as assignments_router
 from tti.routes.auth import router as auth_router
@@ -59,9 +59,7 @@ async def lifespan(app: FastAPI):
         logger.warning("odoo authentication failed at startup", exc_info=True)
 
     employee_resolver = EmployeeResolver(odoo)
-    assignment_service = (
-        AssignmentService(odoo, profile, settings.internal_project_id) if profile is not None else None
-    )
+    assignment_service = AssignmentService(odoo, profile, settings.internal_project_id) if profile is not None else None
     period_service = PeriodService(odoo, profile) if profile is not None else None
     session_factory = make_session_factory(settings.database_url)
     outbox_service = (
@@ -120,7 +118,7 @@ async def odoo_error_handler(request: Request, exc: OdooError) -> JSONResponse:
     # assignments, periods, the pre-write assignment/period-lock checks in
     # entries/service.py — none of which have anywhere else to queue to;
     # there's nothing to enqueue if we can't even read what to write.
-    logger.warning("unhandled OdooError reached the route layer", exc_info=True)
+    logger.warning("unhandled OdooError reached the route layer", exc_info=exc)
     if isinstance(exc, OdooRejected):
         return JSONResponse(status_code=422, content={"error": "odoo_rejected", "message": str(exc)})
     # The exception text stays in the log above: it can name internal hosts,

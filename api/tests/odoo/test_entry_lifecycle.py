@@ -14,8 +14,8 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import delete
 
-from tti.entries.errors import EntryNotOwned
 from tti.domain.errors import DailyCapExceeded
+from tti.entries.errors import EntryNotOwned
 from tti.odoo.client import OdooClient
 from tti.outbox.models import OutboxRow
 from tti.outbox.service import OutboxService
@@ -95,7 +95,9 @@ async def test_delete_removes_it(odoo_client, entry_service, session_factory):
     assert remaining == []
 
     async with session_factory() as session:
-        await session.execute(delete(OutboxRow).where(OutboxRow.employee_id == TM_EMPLOYEE_ID, OutboxRow.odoo_line_id == entry.id))
+        await session.execute(
+            delete(OutboxRow).where(OutboxRow.employee_id == TM_EMPLOYEE_ID, OutboxRow.odoo_line_id == entry.id)
+        )
         await session.commit()
 
 
@@ -178,9 +180,7 @@ async def validated_through_prev_month(odoo_client):
         )
 
 
-async def test_locked_period_refuses_all_three_operations(
-    odoo_client, entry_service, validated_through_prev_month
-):
+async def test_locked_period_refuses_all_three_operations(odoo_client, entry_service, validated_through_prev_month):
     locked_date = validated_through_prev_month
 
     with pytest.raises(PeriodLocked):
@@ -198,7 +198,15 @@ async def test_locked_period_refuses_all_three_operations(
     line_id = await odoo_client.execute_kw(
         "account.analytic.line",
         "create",
-        [{"employee_id": TM_EMPLOYEE_ID, "project_id": 1, "date": locked_date.isoformat(), "unit_amount": 1.0, "name": "pre-existing, now locked"}],
+        [
+            {
+                "employee_id": TM_EMPLOYEE_ID,
+                "project_id": 1,
+                "date": locked_date.isoformat(),
+                "unit_amount": 1.0,
+                "name": "pre-existing, now locked",
+            }
+        ],
     )
     try:
         with pytest.raises(PeriodLocked):

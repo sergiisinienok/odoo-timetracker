@@ -68,9 +68,7 @@ def last_working_days(today: date, count: int = WORKING_DAYS_WINDOW) -> list[dat
 
 def render(digest: Digest, today: date) -> tuple[str, str]:
     """(subject, html body)."""
-    problems = (
-        len(digest.stuck_pending) + len(digest.failed) + len(digest.no_assignment) + len(digest.no_recent_entry)
-    )
+    problems = len(digest.stuck_pending) + len(digest.failed) + len(digest.no_assignment) + len(digest.no_recent_entry)
     subject = (
         f"Time tracker digest {today.isoformat()}: all clear"
         if digest.is_empty
@@ -99,7 +97,9 @@ def render(digest: Digest, today: date) -> tuple[str, str]:
         outbox_section("Pending for more than 15 minutes", digest.stuck_pending)
         + outbox_section("Failed", digest.failed)
         + name_section("Employees with no assignment", digest.no_assignment)
-        + name_section(f"Employees with no entry in the last {WORKING_DAYS_WINDOW} working days", digest.no_recent_entry)
+        + name_section(
+            f"Employees with no entry in the last {WORKING_DAYS_WINDOW} working days", digest.no_recent_entry
+        )
     )
     return subject, body
 
@@ -109,23 +109,29 @@ async def _outbox_items(
 ) -> tuple[list[OutboxRow], list[OutboxRow]]:
     async with session_factory() as session:
         pending = (
-            await session.execute(
-                select(OutboxRow)
-                .where(OutboxRow.state == OutboxState.PENDING.value, OutboxRow.created_at < now - PENDING_AGE_LIMIT)
-                .order_by(OutboxRow.created_at)
+            (
+                await session.execute(
+                    select(OutboxRow)
+                    .where(OutboxRow.state == OutboxState.PENDING.value, OutboxRow.created_at < now - PENDING_AGE_LIMIT)
+                    .order_by(OutboxRow.created_at)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         failed = (
-            await session.execute(
-                select(OutboxRow).where(OutboxRow.state == OutboxState.FAILED.value).order_by(OutboxRow.created_at)
+            (
+                await session.execute(
+                    select(OutboxRow).where(OutboxRow.state == OutboxState.FAILED.value).order_by(OutboxRow.created_at)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     return list(pending), list(failed)
 
 
-async def gather(
-    odoo: OdooClient, session_factory: async_sessionmaker[AsyncSession], now: datetime
-) -> Digest:
+async def gather(odoo: OdooClient, session_factory: async_sessionmaker[AsyncSession], now: datetime) -> Digest:
     pending_rows, failed_rows = await _outbox_items(session_factory, now)
 
     employees = await odoo.execute_kw("hr.employee", "search_read", [[("active", "=", True)]], {"fields": ["name"]})
@@ -151,9 +157,7 @@ async def gather(
             last_error=row.last_error,
         )
 
-    mapped = await odoo.execute_kw(
-        "project.sale.line.employee.map", "search_read", [[]], {"fields": ["employee_id"]}
-    )
+    mapped = await odoo.execute_kw("project.sale.line.employee.map", "search_read", [[]], {"fields": ["employee_id"]})
     with_assignment = {m["employee_id"][0] for m in mapped}
 
     window_start = last_working_days(now.date())[-1]

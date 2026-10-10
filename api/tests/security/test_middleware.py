@@ -86,7 +86,9 @@ async def test_no_cors_headers_are_ever_emitted(client):
 
 async def test_oversize_body_is_refused(client):
     r = await client.post(
-        "/entries", content=b"x" * (MAX_BODY_BYTES + 1), headers={"Origin": BASE_URL, "Content-Type": "application/json"}
+        "/entries",
+        content=b"x" * (MAX_BODY_BYTES + 1),
+        headers={"Origin": BASE_URL, "Content-Type": "application/json"},
     )
     assert r.status_code == 413 and r.json()["error"] == "payload_too_large"
 

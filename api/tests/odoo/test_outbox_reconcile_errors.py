@@ -12,7 +12,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import delete
 
-from tti.odoo.errors import OdooRejected, OdooUncertain, OdooUnavailable
+from tti.odoo.errors import OdooRejected, OdooUnavailable, OdooUncertain
 from tti.outbox.models import OutboxOp, OutboxRow, OutboxState
 from tti.outbox.worker import process_one_pending_row
 
@@ -45,7 +45,7 @@ async def _seed_retry_row(session_factory, op: str) -> uuid.UUID:
         odoo_line_id=None if op == OutboxOp.CREATE.value else 999999,
         state=OutboxState.PENDING.value,
         attempts=1,
-        next_attempt=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1),
+        next_attempt=datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=1),
     )
     async with session_factory() as s:
         s.add(row)
@@ -80,18 +80,25 @@ async def test_retry_while_odoo_is_down_backs_off_instead_of_raising(session_fac
         after = await _row(session_factory, row_id)
         assert after.state == OutboxState.PENDING.value
         assert after.attempts == before.attempts + 1
-        assert after.next_attempt > datetime.datetime.now(datetime.timezone.utc), "backoff must push the next attempt out"
+        assert after.next_attempt > datetime.datetime.now(datetime.UTC), "backoff must push the next attempt out"
         assert str(exc) in after.last_error
-        assert odoo.calls == [("account.analytic.line", "search_read")], "only the reconcile search, never a blind write"
+        assert odoo.calls == [("account.analytic.line", "search_read")], (
+            "only the reconcile search, never a blind write"
+        )
     finally:
         await _forget(session_factory, row_id)
 
 
 @pytest.mark.parametrize("op", [OutboxOp.CREATE.value, OutboxOp.DELETE.value])
-async def test_a_rejected_reconcile_search_fails_the_row_and_frees_the_queue(session_factory, profile, period_service, op):
+async def test_a_rejected_reconcile_search_fails_the_row_and_frees_the_queue(
+    session_factory, profile, period_service, op
+):
     row_id = await _seed_retry_row(session_factory, op)
     try:
-        assert await _drain_one(session_factory, FailingOdoo(OdooRejected("access denied")), profile, period_service) is True
+        assert (
+            await _drain_one(session_factory, FailingOdoo(OdooRejected("access denied")), profile, period_service)
+            is True
+        )
         row = await _row(session_factory, row_id)
         assert row.state == OutboxState.FAILED.value and "access denied" in row.last_error
         # Failed rows are never picked again: the next poll finds nothing due.

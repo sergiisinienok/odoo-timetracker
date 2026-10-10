@@ -8,18 +8,17 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import delete, select
+from switchable import SwitchableOdoo
 
 from tti.assignments.service import AssignmentService
 from tti.config import Settings
 from tti.domain.errors import DailyCapExceeded
 from tti.entries.service import EntryService
+from tti.odoo.errors import OdooUnavailable
 from tti.outbox.models import OutboxRow, OutboxState
 from tti.outbox.service import OutboxService
-from tti.odoo.errors import OdooUnavailable
 from tti.outbox.worker import process_one_pending_row
 from tti.periods.service import PeriodService
-
-from switchable import SwitchableOdoo
 
 pytestmark = pytest.mark.odoo
 
@@ -37,9 +36,7 @@ async def _lines_named(odoo, prefix):
     return await odoo.execute_kw("account.analytic.line", "search", [[("name", "like", prefix)]])
 
 
-async def test_input_survives_an_outage_and_drains_to_exactly_one_line_each(
-    odoo_client, session_factory, profile
-):
+async def test_input_survives_an_outage_and_drains_to_exactly_one_line_each(odoo_client, session_factory, profile):
     """The employee has the app open (assignments and period cached), Odoo goes
     away, they save three entries; Odoo comes back. Nothing may be refused or
     lost, and the drain must leave exactly one Odoo line per entry."""
@@ -70,7 +67,11 @@ async def test_input_survives_an_outage_and_drains_to_exactly_one_line_each(
         assert [e.sync_state for e in entries] == ["pending"] * 3, "input must be accepted as pending, not refused"
 
         async with session_factory() as s:
-            rows = (await s.execute(select(OutboxRow).where(OutboxRow.id.in_([e.outbox_id for e in entries])))).scalars().all()
+            rows = (
+                (await s.execute(select(OutboxRow).where(OutboxRow.id.in_([e.outbox_id for e in entries]))))
+                .scalars()
+                .all()
+            )
         assert len(rows) == 3 and all(r.state == OutboxState.PENDING.value for r in rows)
         assert await _lines_named(odoo_client, prefix) == []
 
@@ -78,7 +79,7 @@ async def test_input_survives_an_outage_and_drains_to_exactly_one_line_each(
         for e in entries:
             async with session_factory() as s:
                 row = await s.get(OutboxRow, e.outbox_id)
-                row.next_attempt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)
+                row.next_attempt = datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=1)
                 await s.commit()
         while await process_one_pending_row(session_factory, odoo_client, profile, periods):
             pass
@@ -86,16 +87,12 @@ async def test_input_survives_an_outage_and_drains_to_exactly_one_line_each(
         for i in range(3):
             assert len(await _lines_named(odoo_client, f"{prefix} {i}")) == 1, f"entry {i}: not exactly one line"
         async with session_factory() as s:
-            states = [
-                (await s.get(OutboxRow, e.outbox_id)).state for e in entries
-            ]
+            states = [(await s.get(OutboxRow, e.outbox_id)).state for e in entries]
         assert states == [OutboxState.SYNCED.value] * 3
     finally:
         for lid in await _lines_named(odoo_client, prefix):
             await odoo_client.execute_kw("account.analytic.line", "unlink", [[lid]])
         await _forget_outbox(session_factory, [e.outbox_id for e in entries if e.outbox_id])
-
-
 
 
 def _stack(odoo_client, session_factory, profile):
@@ -129,7 +126,11 @@ async def test_the_daily_cap_still_holds_during_an_outage(odoo_client, session_f
     try:
         entries.append(
             await service.create_entry(
-                employee_id=EMP, assignment_id="internal", date=TODAY.isoformat(), hours=float(first), note=f"{prefix} a"
+                employee_id=EMP,
+                assignment_id="internal",
+                date=TODAY.isoformat(),
+                hours=float(first),
+                note=f"{prefix} a",
             )
         )
         assert entries[0].sync_state == "pending"

@@ -17,6 +17,6 @@ async def list_periods(request: Request) -> list[dict[str, object]]:
     if service is None:
         raise HTTPException(status_code=503, detail={"error": "profile_not_loaded"})
 
-    today = today_for(session.timezone, datetime.datetime.now(datetime.timezone.utc))
+    today = today_for(session.timezone, datetime.datetime.now(datetime.UTC))
     months = await service.months_for(session.employee_id, today)
     return [{"month": m.month, "state": m.state.value} for m in months]

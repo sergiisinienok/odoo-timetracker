@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tti.config import OdooProfile
 from tti.odoo.client import OdooClient
-from tti.odoo.errors import OdooRejected, OdooUncertain, OdooUnavailable
+from tti.odoo.errors import OdooRejected, OdooUnavailable, OdooUncertain
 from tti.outbox.models import OutboxOp, OutboxRow, OutboxState
 from tti.periods.errors import PeriodLocked
 from tti.periods.service import PeriodService
@@ -194,7 +194,7 @@ class OutboxService:
                     OutboxRow.op == OutboxOp.CREATE.value,
                 )
             )
-            total = Decimal("0")
+            total = Decimal(0)
             for hours in result.scalars():
                 if hours is not None:
                     total += hours
@@ -240,8 +240,8 @@ def _update_vals(row: OutboxRow) -> dict[str, object]:
 async def _mark_pending_retry(session: AsyncSession, row: OutboxRow, exc: Exception) -> None:
     row.attempts += 1
     row.last_error = str(exc)
-    row.next_attempt = datetime.now(timezone.utc) + timedelta(seconds=backoff_seconds(row.attempts))
-    row.updated_at = datetime.now(timezone.utc)
+    row.next_attempt = datetime.now(UTC) + timedelta(seconds=backoff_seconds(row.attempts))
+    row.updated_at = datetime.now(UTC)
     await session.commit()
 
 
@@ -249,7 +249,7 @@ async def _mark_failed(session: AsyncSession, row: OutboxRow, periods: PeriodSer
     row.attempts += 1
     row.state = OutboxState.FAILED.value
     row.last_error = str(exc)
-    row.updated_at = datetime.now(timezone.utc)
+    row.updated_at = datetime.now(UTC)
     await session.commit()
     # Odoo itself rejecting a write is a signal our cached validated-through
     # date might be stale — invalidate eagerly rather than waiting out the TTL.
@@ -260,7 +260,7 @@ async def _mark_synced(session: AsyncSession, row: OutboxRow, odoo_line_id: int)
     row.attempts += 1
     row.state = OutboxState.SYNCED.value
     row.odoo_line_id = odoo_line_id
-    row.updated_at = datetime.now(timezone.utc)
+    row.updated_at = datetime.now(UTC)
     await session.commit()
 
 
@@ -366,7 +366,9 @@ async def _attempt_create(
     reconcile_first: bool,
 ) -> None:
     if reconcile_first:
-        existing = await _reconcile_search(session, row, odoo, periods, [(profile.app_entry_id_field, "=", str(row.id))])
+        existing = await _reconcile_search(
+            session, row, odoo, periods, [(profile.app_entry_id_field, "=", str(row.id))]
+        )
         if existing is None:
             return
         if existing:
@@ -378,7 +380,9 @@ async def _attempt_create(
         return
 
     try:
-        line_id = await odoo.execute_kw("account.analytic.line", "create", [_create_vals(row, profile.app_entry_id_field)])
+        line_id = await odoo.execute_kw(
+            "account.analytic.line", "create", [_create_vals(row, profile.app_entry_id_field)]
+        )
     except (OdooUnavailable, OdooUncertain) as exc:
         await _mark_pending_retry(session, row, exc)
         return

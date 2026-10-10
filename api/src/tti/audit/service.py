@@ -26,8 +26,7 @@ async def record(
             session.add(AuditLogRow(employee_id=employee_id, action=action, target=target, outcome=outcome))
             await session.commit()
     except Exception:
-        logger.error(
+        logger.exception(
             "audit_log write failed",
-            exc_info=True,
             extra={"employee_id": employee_id, "action": action, "target": target, "outcome": outcome},
         )
