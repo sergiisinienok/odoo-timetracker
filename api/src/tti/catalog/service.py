@@ -5,6 +5,8 @@ from Odoo. Replaces the assignment list: one entry per project (no paid/unpaid
 twins), and **no billability anywhere** — the employee is never shown it; the
 server resolves it at write time (domain/billing.py).
 
+Projects are labelled by their own Odoo name, never by customer (decision 0015).
+
 Which projects (decision 0014): every project the employee is mapped to (the
 billable ones), plus **every active unbillable project that allows timesheets**,
 whether or not they are mapped to it. There is no special "internal project":
@@ -108,7 +110,7 @@ class CatalogService:
 
     async def _build(self, employee_id: int) -> Snapshot:
         billable_field = self._profile.project_billable_field
-        fields = ["name", "partner_id", billable_field]
+        fields = ["name", billable_field]
 
         # Three stages, each a set of independent Odoo calls run together.
         rows, unbillable, default_value = await asyncio.gather(
@@ -158,24 +160,9 @@ class CatalogService:
             if any(t.id == task_id for t in tasks_by_project.get(pid, []))
         }
 
-        # Billable projects are named for their client; a customer with more
-        # than one of them in *this employee's own* list needs the project name
-        # appended to stay unambiguous. An unbillable project is chosen by its
-        # own name (decision 0014).
-        customer_counts: dict[int, int] = {}
-        for pid in project_ids:
-            partner = projects[pid]["partner_id"]
-            if projects[pid][billable_field] and partner:
-                customer_counts[partner[0]] = customer_counts.get(partner[0], 0) + 1
-
+        # Every project is shown by its own Odoo name (decision 0015).
         def label_for(pid: int) -> str:
-            project = projects[pid]
-            partner = project["partner_id"]
-            if not partner or not project[billable_field]:
-                return project["name"]
-            if customer_counts[partner[0]] > 1:
-                return f"{partner[1]} — {project['name']}"
-            return partner[1]
+            return projects[pid]["name"]
 
         catalog = [
             CatalogProject(

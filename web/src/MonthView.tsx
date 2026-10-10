@@ -21,6 +21,9 @@ const MONTH_NAMES = [
 ];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// Shown when the lists cannot be read (Odoo busy or unreachable). Nothing is lost: saved entries are in Odoo.
+const LOAD_ERROR = "Couldn't load your projects just now — Odoo isn't answering. Reload in a moment; nothing you saved is lost.";
+
 // Purely a visual reference for bar-width scaling, not a business rule —
 // the server is the sole authority on the real cap (Appendix F: "the
 // client mirrors the server's rules but the server is the authority").
@@ -68,6 +71,7 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [periodState, setPeriodState] = useState<"open" | "locked" | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [projectId, setProjectId] = useState<number | null>(null);
   const [taskId, setTaskId] = useState("");
@@ -81,11 +85,22 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
   const today = useMemo(() => new Date(), []);
 
   const load = useCallback(async () => {
-    const [catalogRes, entriesRes, periodsRes] = await Promise.all([
-      fetchJson<CatalogProject[]>("/api/catalog"),
-      fetchJson<Entry[]>("/api/entries"),
-      fetchJson<Period[]>("/api/periods"),
-    ]);
+    let catalogRes, entriesRes, periodsRes;
+    try {
+      [catalogRes, entriesRes, periodsRes] = await Promise.all([
+        fetchJson<CatalogProject[]>("/api/catalog"),
+        fetchJson<Entry[]>("/api/entries"),
+        fetchJson<Period[]>("/api/periods"),
+      ]);
+    } catch {
+      setLoadError(LOAD_ERROR);
+      return;
+    }
+    if (catalogRes.status !== 200 || entriesRes.status !== 200 || periodsRes.status !== 200) {
+      setLoadError(LOAD_ERROR);
+      return;
+    }
+    setLoadError(null);
     setCatalog(catalogRes.body);
     setEntries(entriesRes.body);
 
@@ -113,17 +128,14 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
   const projectTotals = useMemo(() => {
     const totals = new Map<number, { label: string; total: number }>();
     for (const entry of entries) {
-      const row = totals.get(entry.project_id) ?? {
-        label: catalog.find((p) => p.project_id === entry.project_id)?.label ?? entry.project_label,
-        total: 0,
-      };
+      const row = totals.get(entry.project_id) ?? { label: entry.project_label, total: 0 };
       row.total += entry.hours;
       totals.set(entry.project_id, row);
     }
     return Array.from(totals.entries())
       .map(([id, row]) => ({ id, ...row }))
       .sort((a, b) => b.total - a.total);
-  }, [entries, catalog]);
+  }, [entries]);
 
   const selectedProject = catalog.find((p) => p.project_id === projectId);
 
@@ -169,9 +181,6 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
     }
   }
 
-  // The catalog's label (client name) wins; the entry's own is Odoo's project name, used until the catalog arrives.
-  const projectLabel = (e: Entry) => catalog.find((p) => p.project_id === e.project_id)?.label ?? e.project_label;
-
   const monthLabel = MONTH_NAMES[today.getMonth()];
   const isLocked = periodState === "locked";
 
@@ -191,6 +200,12 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
         <h1>{monthLabel}</h1>
         <span className="month-total">{monthTotal.toFixed(1)} h</span>
       </div>
+
+      {loadError && (
+        <p className="save-message error" role="alert">
+          {loadError}
+        </p>
+      )}
 
       {isLocked ? (
         <p className="period-banner locked">
@@ -325,7 +340,7 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
                               />
                             ) : (
                               <>
-                                {entry.hours.toFixed(2)}h — {projectLabel(entry)} — {entry.task_name ?? "No task"}
+                                {entry.hours.toFixed(2)}h — {entry.project_label} — {entry.task_name ?? "No task"}
                                 {entry.note.trim() ? ` — ${entry.note}` : ""}
                                 {entry.sync_state !== "synced" ? ` (${entry.sync_state})` : ""}
                                 {!isLocked && entry.id !== null && entry.sync_state === "synced" && (

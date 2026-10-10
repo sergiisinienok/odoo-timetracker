@@ -6,7 +6,7 @@ from switchable import SwitchableOdoo
 
 pytestmark = pytest.mark.odoo
 
-# Live trial data (2b.4): employee 1 is mapped to project 2 (S00001, customer
+# Live trial data (2b.4): employee 1 is mapped to project 2 ("S00001", customer
 # "Alpha Inc - Test"), 28 (Beta INC Effort Project) and 32 (Unbillable Test).
 # Unbillable projects are open to everyone (decision 0014): 32 is mapped to employee 1, 33 and 1 are not.
 EMPLOYEE_ID = 1
@@ -52,7 +52,6 @@ async def test_every_unbillable_project_is_listed_by_its_own_name(make_catalog_s
     project = catalog[unbillable_target["project_id"]]  # employee 1 is not mapped to it
     assert project.label == "TEMP unbillable project"
     assert unbillable_target["task_id"] in {t.id for t in project.tasks}
-    # Mapped *and* unbillable (project 32) is named for the project too, not its customer.
     assert catalog[32].label == "Unbillable Test"
 
 
@@ -250,14 +249,12 @@ async def test_default_project_is_flagged_and_an_unlisted_default_is_dropped(odo
         )
 
 
-async def test_a_customer_with_two_projects_gets_disambiguated_labels(odoo_client, make_catalog_service, temp_records):
-    # Employee 1 is already mapped to project 2 (S00001, customer "Alpha Inc -
-    # Test", partner 11). Add a second project under the same customer — only
-    # the label logic is under test, so reusing an order line is fine.
-    alpha_partner_id = 11
-    project_id = await temp_records(
-        "project.project", {"name": "TEMP second project for label test", "allow_billable": True}
-    )
+async def test_every_project_is_labelled_by_its_odoo_name_never_by_customer(
+    odoo_client, make_catalog_service, temp_records
+):
+    # Two projects for one customer must be told apart by their own names.
+    alpha_partner_id = 11  # "Alpha Inc - Test", also the customer of project 2
+    project_id = await temp_records("project.project", {"name": "TEMP second Alpha project", "allow_billable": True})
     # Order matters: writing partner_id *before* the mapping row exists gets
     # silently reset to False (CLAUDE.md, step 1.4), so map first, then write it.
     await temp_records(
@@ -267,9 +264,15 @@ async def test_a_customer_with_two_projects_gets_disambiguated_labels(odoo_clien
     await odoo_client.execute_kw("project.project", "write", [[project_id], {"partner_id": alpha_partner_id}])
 
     catalog = _by_id(await make_catalog_service().list_for_employee(EMPLOYEE_ID))
-    alpha_labels = {pid: p.label for pid, p in catalog.items() if pid in (PROJECT_ID, project_id)}
-    assert len(alpha_labels) == 2 and len(set(alpha_labels.values())) == 2
-    assert all("Alpha Inc - Test" in label for label in alpha_labels.values())
+    names = {
+        r["id"]: r["name"]
+        for r in await odoo_client.execute_kw(
+            "project.project", "read", [[PROJECT_ID, project_id]], {"fields": ["name"]}
+        )
+    }
+    assert catalog[PROJECT_ID].label == names[PROJECT_ID]
+    assert catalog[project_id].label == "TEMP second Alpha project"
+    assert "Alpha Inc" not in catalog[PROJECT_ID].label
 
 
 async def test_odoos_built_in_internal_project_is_not_listed(odoo_client, make_catalog_service, profile):

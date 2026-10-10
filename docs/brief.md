@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft v9 — every unbillable project open to everyone, no special internal project (10 Oct 2026, decision 0014); v8 — tasks and three-level billability (29 Sep 2026, decision 0011); v7 incorporated review comments from Yarik |
+| **Status** | Draft v10 — projects shown by their Odoo name, not the client's (decision 0015); v9 — every unbillable project open to everyone, no special internal project (10 Oct 2026, decision 0014); v8 — tasks and three-level billability (29 Sep 2026, decision 0011); v7 incorporated review comments from Yarik |
 | **Owner** | Sergii |
 | **Target system** | Odoo 19 Enterprise (Odoo Online) |
 | **Billing model** | Time & materials, rate per employee or monthly flat rate, USD only |
@@ -105,7 +105,7 @@ The practical consequence for the approver: on a flat-rate assignment, hours mat
 
 ### What an assignment is called
 
-Employees see **the client's name**, taken from the project's customer in Odoo. No new vocabulary, no internal project codes, nothing to learn. Where one client has more than one engagement, the app appends the project name to keep them apart; that is the only case where a project name is ever shown.
+**(v10)** Employees see **the project's own name, exactly as it is in Odoo**, for every project. No new vocabulary, nothing to learn, and several engagements for one client are told apart the way they already are in Odoo. (v9 and earlier showed the client's name and appended the project name only where one client had two.)
 
 ### The default, and the rare second client
 
@@ -175,7 +175,7 @@ Everything the person has logged, across periods. Filter by month and assignment
 | Signed-in user | `hr.employee` | Resolved from the Google account's email; never guessed |
 | Assignment (client, T&M) | `project.project` + `sale.order.line` | The engagement's project, and that employee's own order line carrying their hourly rate, invoiced on delivered timesheets |
 | Assignment (client, flat rate) | `project.project` + `sale.order.line` | The same, but the order line is priced as a fixed monthly amount and invoiced on its own schedule; hours are recorded against it without driving the amount |
-| Assignment label | `res.partner` | The project's customer — the client name the employee sees |
+| Project label **(v10)** | `project.project` | The project's own name, as shown in Odoo; the customer is no longer used |
 | Default assignment | `hr.employee`, Studio field | Many2one to `project.project`, administered on the employee form |
 | Assignment (client, unpaid) | `project.project` | **(v8: replaced by unbillable tasks)** The client's own project, with the sales order line left empty — Odoo's representation of a non-billable timesheet |
 | Task **(v8)** | `project.task` | Created by ops on each project; carries the billable override (*Same as project* / *Billable* / *Not billable*), likely a Studio field. Written to the timesheet line's task |

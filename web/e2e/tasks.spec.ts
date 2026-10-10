@@ -12,8 +12,8 @@ const SESSION_SECRET = process.env.SESSION_SECRET;
 if (!SESSION_SECRET) throw new Error("SESSION_SECRET must be set — source ../.env before running `npm run test:e2e`");
 
 const TM_EMPLOYEE_ID = 1;
-const T_AND_M = 2; // S00001, billable, employee 1 mapped — "Alpha Inc - Test"
-const FLAT_RATE = 28; // Beta INC Effort Project, employee 1 mapped — "Beta Inc - Test"
+const T_AND_M = 2; // S00001, billable, employee 1 mapped
+const FLAT_RATE = 28; // Beta INC Effort Project, employee 1 mapped
 
 function isoDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

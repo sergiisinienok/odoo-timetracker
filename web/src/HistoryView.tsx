@@ -47,12 +47,17 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
   const [items, setItems] = useState<Entry[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const requestId = useRef(0);
 
   useEffect(() => {
-    fetchJson<CatalogProject[]>("/api/catalog").then(({ body }) => setCatalog(body));
-    fetchJson<Period[]>("/api/periods").then(({ body }) => setPeriods(body));
+    fetchJson<CatalogProject[]>("/api/catalog")
+      .then(({ status, body }) => status === 200 && setCatalog(body))
+      .catch(() => undefined); // the filters just stay empty; the list itself reports its own failure
+    fetchJson<Period[]>("/api/periods")
+      .then(({ status, body }) => status === 200 && setPeriods(body))
+      .catch(() => undefined);
   }, []);
 
   // Debounce the free-text search so a fast typist doesn't fire a
@@ -75,10 +80,19 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
         limit: String(PAGE_SIZE),
         offset: String(offset),
       });
-      const { body } = await fetchJson<{ items: Entry[]; total: number }>(`/api/entries/search${query}`);
+      const { status, body } = await fetchJson<{ items: Entry[]; total: number }>(`/api/entries/search${query}`);
       if (myRequest !== requestId.current) return; // a newer filter change superseded this
+      if (status !== 200) {
+        setLoadError("Couldn't load your history just now — Odoo isn't answering. Try again in a moment.");
+        return;
+      }
+      setLoadError(null);
       setTotal(body.total);
       setItems((current) => (append ? [...current, ...body.items] : body.items));
+    } catch {
+      if (myRequest === requestId.current) {
+        setLoadError("Couldn't load your history just now — Odoo isn't answering. Try again in a moment.");
+      }
     } finally {
       if (myRequest === requestId.current) setLoading(false);
     }
@@ -145,6 +159,12 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
         />
       </div>
 
+      {loadError && (
+        <p className="save-message error" role="alert">
+          {loadError}
+        </p>
+      )}
+
       <p className="history-count">
         {total} {total === 1 ? "entry" : "entries"}
       </p>
@@ -160,8 +180,7 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
               <li key={entry.id ?? entry.outbox_id} className="history-row">
                 <span className="history-date">{formatDate(entry.date)}</span>
                 <span className="history-project">
-                  {catalog.find((p) => p.project_id === entry.project_id)?.label ?? entry.project_label} —{" "}
-                  {entry.task_name ?? "No task"}
+                  {entry.project_label} — {entry.task_name ?? "No task"}
                 </span>
                 <span className="history-hours">{entry.hours.toFixed(2)}</span>
                 <span className="history-note">{entry.note.trim()}</span>
