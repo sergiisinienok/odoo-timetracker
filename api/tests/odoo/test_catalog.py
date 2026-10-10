@@ -4,13 +4,11 @@ from types import SimpleNamespace
 import pytest
 from switchable import SwitchableOdoo
 
-from tti.config import Settings
-
 pytestmark = pytest.mark.odoo
 
 # Live trial data (2b.4): employee 1 is mapped to project 2 (S00001, customer
 # "Alpha Inc - Test"), 28 (Beta INC Effort Project) and 32 (Unbillable Test).
-# The internal project is whatever INTERNAL_PROJECT_ID says (33 on the trial).
+# Unbillable projects are open to everyone (decision 0014): 32 is mapped to employee 1, 33 and 1 are not.
 EMPLOYEE_ID = 1
 PROJECT_ID = 2
 OTHER_PROJECT_ID = 28
@@ -40,15 +38,52 @@ def _by_id(catalog):
     return {p.id: p for p in catalog}
 
 
-async def test_mapped_employee_sees_each_project_once_and_the_internal_project(make_catalog_service):
+async def test_mapped_employee_sees_each_project_once(make_catalog_service):
     catalog = await make_catalog_service().list_for_employee(EMPLOYEE_ID)
     ids = [p.id for p in catalog]
-    internal_id = Settings.from_env().internal_project_id
 
-    assert len(ids) == len(set(ids))  # no paid/unpaid twins
-    assert {PROJECT_ID, OTHER_PROJECT_ID, internal_id} <= set(ids)
-    assert _by_id(catalog)[internal_id].label == "Internal"
+    assert len(ids) == len(set(ids))  # no paid/unpaid twins, and no duplicate when mapped *and* unbillable
+    assert {PROJECT_ID, OTHER_PROJECT_ID} <= set(ids)
     assert not any("unpaid" in p.label.lower() for p in catalog)
+
+
+async def test_every_unbillable_project_is_listed_by_its_own_name(make_catalog_service, unbillable_target):
+    catalog = _by_id(await make_catalog_service().list_for_employee(EMPLOYEE_ID))
+    project = catalog[unbillable_target["project_id"]]  # employee 1 is not mapped to it
+    assert project.label == "TEMP unbillable project"
+    assert unbillable_target["task_id"] in {t.id for t in project.tasks}
+    # Mapped *and* unbillable (project 32) is named for the project too, not its customer.
+    assert catalog[32].label == "Unbillable Test"
+
+
+async def test_a_billable_project_the_employee_is_not_mapped_to_is_not_listed(make_catalog_service):
+    # Project 29 is billable and employee 1 has no mapping on it.
+    assert 29 not in _by_id(await make_catalog_service().list_for_employee(EMPLOYEE_ID))
+
+
+async def test_an_unbillable_project_with_no_tasks_is_listed_empty(make_catalog_service, temp_records):
+    project_id = await temp_records(
+        "project.project", {"name": "TEMP empty unbillable", "allow_billable": False, "allow_timesheets": True}
+    )
+    project = _by_id(await make_catalog_service().list_for_employee(EMPLOYEE_ID))[project_id]
+    assert project.tasks == ()
+
+
+async def test_an_archived_or_timesheetless_unbillable_project_is_not_listed(make_catalog_service, temp_records):
+    archived = await temp_records(
+        "project.project", {"name": "TEMP archived", "allow_billable": False, "allow_timesheets": True, "active": False}
+    )
+    no_timesheets = await temp_records(
+        "project.project", {"name": "TEMP no timesheets", "allow_billable": False, "allow_timesheets": False}
+    )
+    ids = {p.id for p in await make_catalog_service().list_for_employee(EMPLOYEE_ID)}
+    assert archived not in ids and no_timesheets not in ids
+
+
+async def test_mapped_projects_come_first_then_the_other_unbillable_ones_by_name(make_catalog_service):
+    labels_in_order = [p.id for p in await make_catalog_service().list_for_employee(EMPLOYEE_ID)]
+    mapped = [pid for pid in labels_in_order if pid in (PROJECT_ID, OTHER_PROJECT_ID, 32)]
+    assert labels_in_order[: len(mapped)] == mapped
 
 
 async def test_a_closed_task_is_absent_and_an_open_one_present(make_catalog_service, temp_records):
@@ -157,7 +192,7 @@ async def test_an_outage_serves_the_last_known_catalog(odoo_client, profile):
     from tti.catalog.service import CatalogService
 
     switch = SwitchableOdoo(odoo_client)
-    service = CatalogService(switch, profile, Settings.from_env().internal_project_id)
+    service = CatalogService(switch, profile)
     warm = await service.snapshot(EMPLOYEE_ID)
 
     service._cache._entries[EMPLOYEE_ID] = (warm, 0.0, 0.0)  # expire freshness, keep last-known
@@ -171,20 +206,23 @@ async def test_a_cold_cache_during_an_outage_refuses(odoo_client, profile):
 
     switch = SwitchableOdoo(odoo_client)
     switch.down = True
-    service = CatalogService(switch, profile, Settings.from_env().internal_project_id)
+    service = CatalogService(switch, profile)
     with pytest.raises(OdooUnavailable):
         await service.list_for_employee(EMPLOYEE_ID)
 
 
-async def test_employee_with_no_mapping_gets_only_the_internal_project(odoo_client, make_catalog_service):
+async def test_an_employee_with_no_mapping_sees_only_unbillable_projects(
+    odoo_client, make_catalog_service, unbillable_target
+):
     temp_id = await odoo_client.execute_kw(
         "hr.employee", "create", [{"name": "TEMP unmapped employee for catalog test"}]
     )
     temp_id = temp_id[0] if isinstance(temp_id, list) else temp_id
     try:
         catalog = await make_catalog_service().list_for_employee(temp_id)
-        assert [p.id for p in catalog] == [Settings.from_env().internal_project_id]
-        assert catalog[0].last_used_task_id is None
+        assert unbillable_target["project_id"] in {p.id for p in catalog}
+        assert PROJECT_ID not in {p.id for p in catalog}  # billable: only through a mapping
+        assert all(p.last_used_task_id is None for p in catalog)
     finally:
         await odoo_client.execute_kw("hr.employee", "unlink", [[temp_id]])
 
@@ -217,7 +255,9 @@ async def test_a_customer_with_two_projects_gets_disambiguated_labels(odoo_clien
     # Test", partner 11). Add a second project under the same customer — only
     # the label logic is under test, so reusing an order line is fine.
     alpha_partner_id = 11
-    project_id = await temp_records("project.project", {"name": "TEMP second project for label test"})
+    project_id = await temp_records(
+        "project.project", {"name": "TEMP second project for label test", "allow_billable": True}
+    )
     # Order matters: writing partner_id *before* the mapping row exists gets
     # silently reset to False (CLAUDE.md, step 1.4), so map first, then write it.
     await temp_records(
@@ -230,3 +270,13 @@ async def test_a_customer_with_two_projects_gets_disambiguated_labels(odoo_clien
     alpha_labels = {pid: p.label for pid, p in catalog.items() if pid in (PROJECT_ID, project_id)}
     assert len(alpha_labels) == 2 and len(set(alpha_labels.values())) == 2
     assert all("Alpha Inc - Test" in label for label in alpha_labels.values())
+
+
+async def test_odoos_built_in_internal_project_is_not_listed(odoo_client, make_catalog_service, profile):
+    # Odoo hides its own company "Internal" project in its UI (is_internal_project); the app follows.
+    internal_ids = await odoo_client.execute_kw(
+        "project.project", "search", [[(profile.project_internal_field, "=", True)]]
+    )
+    assert internal_ids, "the sandbox is expected to have Odoo's built-in internal project"
+    listed = {p.id for p in await make_catalog_service().list_for_employee(EMPLOYEE_ID)}
+    assert not listed & set(internal_ids)

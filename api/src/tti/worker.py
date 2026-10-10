@@ -41,7 +41,6 @@ async def main() -> None:
                 settings.ops_digest_to,
                 settings.digest_hour_utc,
                 profile,
-                settings.internal_project_id,
             ),
         )
     finally:

@@ -25,7 +25,6 @@ class Settings:
     google_hosted_domain: str
     session_secret: str
     public_base_url: str
-    internal_project_id: int
     daily_hour_cap: Decimal
     log_level: str = "INFO"
     ops_digest_to: str = ""
@@ -45,7 +44,6 @@ class Settings:
             google_hosted_domain=os.environ["GOOGLE_HOSTED_DOMAIN"],
             session_secret=os.environ["SESSION_SECRET"],
             public_base_url=os.environ.get("PUBLIC_BASE_URL", "http://localhost"),
-            internal_project_id=int(os.environ["INTERNAL_PROJECT_ID"]),
             daily_hour_cap=Decimal(os.environ["DAILY_HOUR_CAP"]),
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
             ops_digest_to=os.environ.get("OPS_DIGEST_TO", ""),

@@ -155,3 +155,27 @@ test("history filters by project and task", async ({ page, context }) => {
   await expect(page.getByText(`${E2E_PREFIX} history note on B`)).toBeVisible();
   await expect(page.locator(".history-row").getByText(`${E2E_PREFIX} history task B`)).toBeVisible(); // the row names its task
 });
+
+test("logs time on an unbillable project the employee is not mapped to", async ({ page, context }) => {
+  // Project 33 is unbillable and employee 1 has no mapping on it (decision 0014): open to everyone.
+  const UNBILLABLE_UNMAPPED = 33;
+  const taskId = await createTask(UNBILLABLE_UNMAPPED, "task on an unmapped unbillable project");
+  await restartApiToDropWarmCaches();
+
+  await signIn(context);
+  await page.goto("/");
+  // Chosen directly by the project's own name — there is no "Internal" shortcut.
+  await page.getByLabel("Project").selectOption({ label: "Internal project (not billable, no mapping)" });
+  await page.getByLabel("Task").selectOption(String(taskId));
+  await page.getByRole("spinbutton", { name: "Hours" }).fill("0.25");
+  await page.getByPlaceholder("Note (optional)").fill(`${E2E_PREFIX} unbillable, unmapped`);
+  await page.getByRole("button", { name: "Save entry" }).click();
+  await expect(page.getByText(/Entry saved|Waiting for Odoo/)).toBeVisible();
+
+  const [saved] = await model("account.analytic.line", "search_read", [
+    [["employee_id", "=", TM_EMPLOYEE_ID], ["name", "=", `${E2E_PREFIX} unbillable, unmapped`]],
+  ], { fields: ["task_id", "project_id", "so_line"] });
+  expect(saved.project_id[0]).toBe(UNBILLABLE_UNMAPPED);
+  expect(saved.task_id[0]).toBe(taskId);
+  expect(saved.so_line).toBe(false);
+});

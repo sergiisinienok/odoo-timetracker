@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft v8 — tasks and three-level billability (29 Sep 2026, decision 0011); v7 incorporated review comments from Yarik |
+| **Status** | Draft v9 — every unbillable project open to everyone, no special internal project (10 Oct 2026, decision 0014); v8 — tasks and three-level billability (29 Sep 2026, decision 0011); v7 incorporated review comments from Yarik |
 | **Owner** | Sergii |
 | **Target system** | Odoo 19 Enterprise (Odoo Online) |
 | **Billing model** | Time & materials, rate per employee or monthly flat rate, USD only |
@@ -63,7 +63,7 @@ Instead, the app asks what they worked on, and offers only their own **assignmen
 | Client, time & materials | This person, on this client engagement, at their contracted hourly rate | The engagement's project, against **their own sales order line** | Hours × their rate |
 | Client, monthly flat rate | This person allocated to a client for a fixed monthly amount | The engagement's project, against their own sales order line | The agreed monthly amount, whatever the hours |
 | **Client, unpaid** | Work for a client that is deliberately not charged — rework, ramp-up, goodwill, overrun we absorb | The engagement's project, **with no sales order line** | Nothing |
-| Internal | Not attached to any client — internal work, bench, PTO | The single internal project, which has no sales order line | Nothing |
+| Unbillable project **(v9, replaces Internal)** | Not attached to any client — internal work, bench, PTO, anything else ops sets up as an unbillable project | Any unbillable project, chosen by its own name; open to every employee; no sales order line | Nothing |
 
 Billability is a property of the assignment, decided once when someone is put on a client, and never re-decided per entry. There is no billable toggle in the interface, because there is nothing for an employee to get wrong.
 
@@ -145,7 +145,7 @@ Everything the person has logged, across periods. Filter by month and assignment
 |---|---|---|
 | Date | yes | The working day in the employee's own timezone. Defaults to today. Must fall inside the open period and inside the assignment's validity dates. |
 | Hours | yes | Quarter-hour increments. The day's total may not exceed the configured daily maximum, default **10 hours**. |
-| Project **(v8, replaces Assignment)** | yes | From the projects they are assigned to, plus the internal project; pre-filled with their Odoo default. Refused if they do not hold it. |
+| Project **(v8, replaces Assignment)** | yes | **(v9)** The projects they are mapped to, plus every unbillable project; pre-filled with their Odoo default. Refused if neither. |
 | Task **(v8)** | yes | An open task on that project, created by ops in Odoo; pre-filled with the task they last used on it. Lines logged before v8 show "No task" and need one when edited. |
 | Note | no | Free text, carried into the Odoo timesheet description |
 
@@ -181,7 +181,7 @@ Everything the person has logged, across periods. Filter by month and assignment
 | Task **(v8)** | `project.task` | Created by ops on each project; carries the billable override (*Same as project* / *Billable* / *Not billable*), likely a Studio field. Written to the timesheet line's task |
 | Project billable default **(v8)** | `project.project` | The project's own billable setting |
 | Time-record override **(v8)** | `account.analytic.line` | The approver sets or clears the line's sales order item in Odoo; the app never undoes it |
-| Assignment (internal) | `project.project` | One catch-all internal project, with no sales order behind it; **(v8)** with ops-defined tasks such as PTO, Bench, Training, Internal work |
+| Unbillable projects **(v9)** | `project.project` | As many as ops wants, each with no sales order behind it and its own ops-defined tasks (PTO, Bench, Training, Internal work …); open to every employee |
 | Rates | `product.pricelist` | Price per role product per client; the sales order line takes its price from there |
 | — | `product.product` | Service product, Invoicing Policy **Based on Timesheets**, Create on Order **Project & Task** |
 | — | `account.move` | The client invoice, generated from the sales order at close |
@@ -281,7 +281,7 @@ Three things hold in every case. The employee never regains access to a closed m
 - **The integration runs as an external service** with a dedicated, privileged, rotatable API key. Odoo Online does not host custom modules.
 - **One approver, one monthly pass**, covering every employee and client.
 - **The month is a hard boundary in the app, not in the company.** Employees cannot touch a closed period, and the app never reopens one. Mistakes found afterwards are corrected by the responsible person directly in Odoo, deliberately and with a record. See below.
-- **One catch-all internal project.** Non-billable time is excluded from invoices. **(v8)** It is now broken down by ops-defined tasks, so internal time can be analysed by kind.
+- **Unbillable projects, open to everyone.** Non-billable time is excluded from invoices. **(v8)** It is broken down by ops-defined tasks. **(v9)** There is no single internal project any more: ops creates as many unbillable projects as they like and every employee sees them all, by project name.
 - **Responsive web, one codebase.** No native apps.
 - **No historical migration.** The app starts with a current month; old spreadsheets are archived as they are.
 

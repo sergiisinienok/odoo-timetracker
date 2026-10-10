@@ -37,11 +37,11 @@ async def validated_through_prev_month(odoo_client):
         )
 
 
-async def test_create_in_a_validated_month_is_refused(entry_service, validated_through_prev_month, internal_target):
+async def test_create_in_a_validated_month_is_refused(entry_service, validated_through_prev_month, unbillable_target):
     with pytest.raises(PeriodLocked):
         await entry_service.create_entry(
             employee_id=TM_EMPLOYEE_ID,
-            **internal_target,
+            **unbillable_target,
             date=_LAST_OF_PREV_MONTH.isoformat(),
             hours=1.0,
             note="should be refused, period locked",
@@ -49,11 +49,11 @@ async def test_create_in_a_validated_month_is_refused(entry_service, validated_t
 
 
 async def test_create_in_the_following_month_still_works(
-    odoo_client, entry_service, session_factory, validated_through_prev_month, internal_target
+    odoo_client, entry_service, session_factory, validated_through_prev_month, unbillable_target
 ):
     entry = await entry_service.create_entry(
         employee_id=TM_EMPLOYEE_ID,
-        **internal_target,
+        **unbillable_target,
         date=_TODAY.isoformat(),
         hours=1.0,
         note="following month, should still work",
@@ -79,7 +79,7 @@ async def test_periods_listing_reflects_the_lock(period_service, validated_throu
 
 
 async def test_a_locked_month_is_refused_as_locked_even_when_the_task_is_missing(
-    odoo_client, entry_service, validated_through_prev_month, internal_target
+    odoo_client, entry_service, validated_through_prev_month, unbillable_target
 ):
     line_id = await odoo_client.execute_kw(
         "account.analytic.line",
@@ -87,7 +87,7 @@ async def test_a_locked_month_is_refused_as_locked_even_when_the_task_is_missing
         [
             {
                 "employee_id": TM_EMPLOYEE_ID,
-                "project_id": internal_target["project_id"],
+                "project_id": unbillable_target["project_id"],
                 "date": _LAST_OF_PREV_MONTH.isoformat(),
                 "unit_amount": 1.0,
                 "name": "2b8 locked legacy line",
@@ -100,7 +100,7 @@ async def test_a_locked_month_is_refused_as_locked_even_when_the_task_is_missing
             await entry_service.update_entry(
                 employee_id=TM_EMPLOYEE_ID,
                 odoo_line_id=line_id,
-                project_id=internal_target["project_id"],
+                project_id=unbillable_target["project_id"],
                 task_id=None,
                 date=_LAST_OF_PREV_MONTH.isoformat(),
                 hours=2.0,

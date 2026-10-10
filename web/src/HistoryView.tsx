@@ -160,7 +160,8 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
               <li key={entry.id ?? entry.outbox_id} className="history-row">
                 <span className="history-date">{formatDate(entry.date)}</span>
                 <span className="history-project">
-                  {entry.project_label} — {entry.task_name ?? "No task"}
+                  {catalog.find((p) => p.project_id === entry.project_id)?.label ?? entry.project_label} —{" "}
+                  {entry.task_name ?? "No task"}
                 </span>
                 <span className="history-hours">{entry.hours.toFixed(2)}</span>
                 <span className="history-note">{entry.note.trim()}</span>

@@ -4,7 +4,7 @@ never undone (decision 0011).
 Truth-table rows (2b.5): 2 project values x 3 task values x mapped/unmapped.
 Nine are reachable through the service, because a project is only *held* by an
 employee through a mapping row: billable-mapped (project 2), unbillable-mapped
-(project 32) and unbillable-unmapped (the internal project). The three
+(project 32) and unbillable-unmapped (a throwaway project). The three
 "billable project, employee unmapped" rows cannot occur for a held project;
 the rule itself is asserted for them in tests/unit/test_billing_rule.py.
 """
@@ -17,7 +17,6 @@ from sqlalchemy import delete, select
 
 from tti.audit.models import AuditLogRow
 from tti.audit.service import BILLING_WARNING_ACTION
-from tti.config import Settings
 from tti.domain.billing import BILLABLE_WITHOUT_ORDER_LINE
 from tti.entries.errors import (
     BillingSetByApprover,
@@ -35,7 +34,7 @@ EMP = 1
 TODAY = datetime.date.today().isoformat()
 BILLABLE_PROJECT, BILLABLE_LINE = 2, 1  # S00001, employee 1's mapped order line
 UNBILLABLE_MAPPED_PROJECT, UNBILLABLE_MAPPED_LINE = 32, 4  # Billable off, employee 1 mapped
-INTERNAL = Settings.from_env().internal_project_id
+UNMAPPED_UNBILLABLE = "unmapped unbillable"  # sentinel: the unbillable_target fixture's project
 
 
 @pytest.fixture
@@ -84,16 +83,26 @@ TRUTH_TABLE = [
     (UNBILLABLE_MAPPED_PROJECT, "same", None, None),
     (UNBILLABLE_MAPPED_PROJECT, "yes", UNBILLABLE_MAPPED_LINE, None),
     (UNBILLABLE_MAPPED_PROJECT, "no", None, None),
-    (INTERNAL, "same", None, None),
-    (INTERNAL, "yes", None, BILLABLE_WITHOUT_ORDER_LINE),
-    (INTERNAL, "no", None, None),
+    (UNMAPPED_UNBILLABLE, "same", None, None),
+    (UNMAPPED_UNBILLABLE, "yes", None, BILLABLE_WITHOUT_ORDER_LINE),
+    (UNMAPPED_UNBILLABLE, "no", None, None),
 ]
 
 
 @pytest.mark.parametrize("project_id,override,expected_so_line,expected_warning", TRUTH_TABLE)
 async def test_every_reachable_truth_table_row_lands_right(
-    odoo_client, entry_service, cleanup, make_task, project_id, override, expected_so_line, expected_warning
+    odoo_client,
+    entry_service,
+    cleanup,
+    make_task,
+    unbillable_target,
+    project_id,
+    override,
+    expected_so_line,
+    expected_warning,
 ):
+    if project_id == UNMAPPED_UNBILLABLE:
+        project_id = unbillable_target["project_id"]
     task_id = await make_task(project_id, f"row {override}", override)
     entry = await _create(entry_service, cleanup, project_id, task_id)
 
@@ -293,10 +302,11 @@ async def test_an_unmoved_line_stays_editable_after_its_task_closes(odoo_client,
 
 
 async def test_a_billable_task_with_no_order_line_saves_normally_and_is_audited(
-    entry_service, cleanup, make_task, session_factory
+    entry_service, cleanup, make_task, session_factory, unbillable_target
 ):
-    task_id = await make_task(INTERNAL, "billable, no mapping", "yes")
-    entry = await _create(entry_service, cleanup, INTERNAL, task_id)
+    project_id = unbillable_target["project_id"]
+    task_id = await make_task(project_id, "billable, no mapping", "yes")
+    entry = await _create(entry_service, cleanup, project_id, task_id)
     assert entry.sync_state == "synced" and entry.billing_warning == BILLABLE_WITHOUT_ORDER_LINE
 
     request = SimpleNamespace(

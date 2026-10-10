@@ -120,7 +120,7 @@ cp .env.example .env && chmod 600 .env
 |---|---|
 | `COMPOSE_FILE` | `docker-compose.yml:docker-compose.staging.yml` — so every plain `docker compose` command on the VM includes the override; forgetting it would bind Caddy to 80/443 and fail against nginx |
 | `ODOO_URL` | `https://edu-timetracking.odoo.com` |
-| `ODOO_DB`, `ODOO_USER`, `INTERNAL_PROJECT_ID`, `DAILY_HOUR_CAP` | same as the local `.env` |
+| `ODOO_DB`, `ODOO_USER`, `DAILY_HOUR_CAP` | same as the local `.env` |
 | `ODOO_KEY` | a **new** key for staging (Odoo → Preferences → Account Security), so it can be rotated or revoked without touching anyone's laptop |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | same as local, after step 3 |
 | `GOOGLE_HOSTED_DOMAIN` | `particlesglobal.com` |

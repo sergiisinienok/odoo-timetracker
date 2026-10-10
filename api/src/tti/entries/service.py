@@ -102,7 +102,6 @@ class EntryService:
         catalog: CatalogService,
         periods: PeriodService,
         outbox: OutboxService,
-        internal_project_id: int,
         daily_hour_cap: Decimal,
     ) -> None:
         self._odoo = odoo
@@ -110,7 +109,6 @@ class EntryService:
         self._catalog = catalog
         self._periods = periods
         self._outbox = outbox
-        self._internal_project_id = internal_project_id
         self._daily_hour_cap = daily_hour_cap
         # (employee, date) -> the Odoo lines on that day as (line id, hours),
         # as last seen. Only consulted when Odoo cannot be asked — see
@@ -320,7 +318,7 @@ class EntryService:
                 "offset": offset,
             },
         )
-        snapshot = await self._snapshot_or_none(employee_id)
+        snapshot = self._snapshot_or_none(employee_id)
         return [self._to_entry(r, snapshot) for r in records], total
 
     async def list_for_employee_month(self, employee_id: int, year: int, month: int) -> list[CreatedEntry]:
@@ -339,7 +337,7 @@ class EntryService:
             ],
             {"fields": self._line_fields()},
         )
-        snapshot = await self._snapshot_or_none(employee_id)
+        snapshot = self._snapshot_or_none(employee_id)
         by_odoo_id: dict[int, CreatedEntry] = {r["id"]: self._to_entry(r, snapshot) for r in records}
 
         # A month load is the freshest view of every day in it — including days
@@ -412,13 +410,11 @@ class EntryService:
     def _line_fields(self) -> list[str]:
         return ["date", "unit_amount", "name", "project_id", "task_id", self._profile.app_entry_id_field]
 
-    async def _snapshot_or_none(self, employee_id: int) -> Snapshot | None:
-        """Labels are a courtesy: a listing must not fail because the catalog
-        could not be read, so fall back to Odoo's own names."""
-        try:
-            return await self._catalog.snapshot(employee_id)
-        except OdooUnavailable, OdooUncertain:
-            return None
+    def _snapshot_or_none(self, employee_id: int) -> Snapshot | None:
+        """Labels are a courtesy: a listing must never wait on, or fail because
+        of, the catalog. Use what was last read; with nothing yet, fall back to
+        Odoo's own names (the web app prefers the catalog's labels anyway)."""
+        return self._catalog.peek(employee_id)
 
     @staticmethod
     def _labels(snapshot: Snapshot | None, project_id: int, task_id: int | None, odoo_names: tuple[str, str | None]):
@@ -551,5 +547,5 @@ class EntryService:
         [record] = await self._odoo.execute_kw(
             "account.analytic.line", "read", [[line_id]], {"fields": self._line_fields()}
         )
-        snapshot = await self._snapshot_or_none(employee_id)
+        snapshot = self._snapshot_or_none(employee_id)
         return self._to_entry(record, snapshot, outbox_id=outbox_id, warning=warning)

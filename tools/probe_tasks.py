@@ -274,6 +274,30 @@ try:
         f"BILLABLE TASK, NO MAPPING: so_line={i['so_line']} invoice_type={i['timesheet_invoice_type']}"
     )
 
+    # --- 6b. Which projects are open to everyone (decision 0014) -------------
+    print("\n=== 6b. unbillable projects open to every employee ===")
+    pf2 = call(
+        "project.project",
+        "fields_get",
+        ["allow_timesheets", "allow_billable", "is_internal_project"],
+        attributes=["type", "string", "store"],
+    )
+    print(f"  {pf2}")
+    unbillable = call(
+        "project.project",
+        "search_read",
+        [("allow_billable", "=", False), ("allow_timesheets", "=", True), ("is_internal_project", "=", False)],
+        fields=["name", "allow_billable", "allow_timesheets", "is_internal_project", "active"],
+    )
+    for p in unbillable:
+        print(f"  unbillable, timesheets on: {p['id']} {p['name']!r}")
+    hidden = call("project.project", "search_read", [("is_internal_project", "=", True)], fields=["name"])
+    print(f"  Odoo's built-in internal project(s), hidden in its UI and left out of the catalog: {hidden}")
+    decisions.append(
+        f"UNBILLABLE PROJECTS OPEN TO ALL: {len(unbillable)} found via allow_billable=False, allow_timesheets=True, "
+        f"is_internal_project=False ({len(hidden)} built-in internal project excluded)"
+    )
+
     # --- 7. qty_delivered --------------------------------------------------
     print("\n=== 7. invoice type and qty_delivered ===")
     qty_after = {s: qty(s) for s in qty_before}
@@ -304,6 +328,8 @@ try:
     profile = json.loads(profile_path.read_text())
     profile.update({
         "project_billable_field": "allow_billable",
+        "project_timesheets_field": "allow_timesheets",
+        "project_internal_field": "is_internal_project",
         "task_open_domain": open_domain,
         "task_billable_field": BILLABLE_FIELD,
         "task_billable_same_as_project_value": same_key,

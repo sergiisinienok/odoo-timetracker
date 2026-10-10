@@ -70,7 +70,6 @@ def _settings() -> Settings:
         google_hosted_domain="example.test",
         session_secret=SECRETS["session_secret"],
         public_base_url=BASE_URL,
-        internal_project_id=1,
         daily_hour_cap=Decimal(10),
         profile_path=Path("/nonexistent"),
     )
@@ -101,9 +100,7 @@ def client(session_factory, odoo):
             "so_line_manual_marker_field": "is_so_line_edited",
         }
     )
-    entry_service = EntryService(
-        odoo, profile, MagicMock(), MagicMock(), MagicMock(), settings.internal_project_id, settings.daily_hour_cap
-    )
+    entry_service = EntryService(odoo, profile, MagicMock(), MagicMock(), MagicMock(), settings.daily_hour_cap)
     app.state.app_state = {
         "settings": settings,
         "profile": profile,

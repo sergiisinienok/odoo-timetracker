@@ -832,8 +832,8 @@ Tests: the full truth table (2 project values × 3 task values × mapped/unmappe
 
 **Do.** Replaces `AssignmentService` and `GET /api/assignments`. Same caching (60 s per employee) and the same last-known fallback on outage (0010).
 
-1. Projects: every project in `project.sale.line.employee.map` for this employee, plus the internal project from config. One entry per project — **no paid/unpaid twins.**
-2. Labels unchanged: customer name, with the project name appended where one customer has two projects in this employee's list; "Internal" for the internal project.
+1. Projects: every project in `project.sale.line.employee.map` for this employee, **plus every active unbillable project that allows timesheets (decision 0014 — there is no longer an "internal project" in config)**. One entry per project — **no paid/unpaid twins.**
+2. Labels: customer name, with the project name appended where one customer has two projects in this employee's list; an unbillable project is named by its own project name (0014).
 3. Tasks: per project, the open tasks per `task_open_domain`, id and name only. **No billability in the response** — the employee is never shown it; the server resolves it at write time.
 4. Default project: the Studio field on `hr.employee`, dropped with a warning if not in the list (unchanged behaviour).
 5. Last-used task per project: the `task_id` of the employee's most recent line on that project, if that task is still open. Otherwise none, and the UI asks.

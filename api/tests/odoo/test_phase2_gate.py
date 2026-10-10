@@ -72,7 +72,7 @@ async def locked_prev_month(odoo_client):
 
 
 async def test_app_refuses_writes_that_odoo_itself_would_accept(
-    odoo_client, entry_service, locked_prev_month, internal_target
+    odoo_client, entry_service, locked_prev_month, unbillable_target
 ):
     """Odoo does not enforce the lock (validated_line_writable is true in the
     profile). So the same three writes the app refuses must succeed when made
@@ -93,11 +93,11 @@ async def test_app_refuses_writes_that_odoo_itself_would_accept(
         # The app refuses all three...
         with pytest.raises(PeriodLocked):
             await entry_service.create_entry(
-                employee_id=EMP, **internal_target, date=locked_day, hours=1.0, note=f"{prefix} b"
+                employee_id=EMP, **unbillable_target, date=locked_day, hours=1.0, note=f"{prefix} b"
             )
         with pytest.raises(PeriodLocked):
             await entry_service.update_entry(
-                employee_id=EMP, odoo_line_id=line_id, **internal_target, date=locked_day, hours=2.0, note="x"
+                employee_id=EMP, odoo_line_id=line_id, **unbillable_target, date=locked_day, hours=2.0, note="x"
             )
         with pytest.raises(PeriodLocked):
             await entry_service.delete_entry(employee_id=EMP, odoo_line_id=line_id)
@@ -317,7 +317,7 @@ async def test_lock_check_with_odoo_down_leaves_the_row_pending_not_failed(odoo_
 
 
 async def test_app_view_reconciles_with_odoo_for_a_full_month(
-    odoo_client, entry_service, session_factory, internal_target, make_task
+    odoo_client, entry_service, session_factory, unbillable_target, make_task
 ):
     year, month = LAST_OF_PREV_MONTH.year, LAST_OF_PREV_MONTH.month
     last_day = calendar.monthrange(year, month)[1]
@@ -330,7 +330,7 @@ async def test_app_view_reconciles_with_odoo_for_a_full_month(
     targets = [
         {"project_id": 2, "task_id": await make_task(2, "gate T&M", "same")},
         {"project_id": 28, "task_id": await make_task(28, "gate flat", "same")},
-        internal_target,
+        unbillable_target,
     ]
     hours_cycle = [0.5, 1.0, 1.5, 2.0, 4.0]
     # The sandbox is shared: the month may already hold real entries, so fill

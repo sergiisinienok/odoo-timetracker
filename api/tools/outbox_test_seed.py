@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from datetime import date as date_type
 from decimal import Decimal
@@ -39,7 +40,9 @@ async def insert(employee_id: int, entry_date: date_type, hours: Decimal, note: 
                 op=OutboxOp.CREATE.value,
                 entry_date=entry_date,
                 hours=hours,
-                project_id=settings.internal_project_id,
+                project_id=int(
+                    os.environ.get("SEED_PROJECT_ID", "2")
+                ),  # any project: the row is deleted, never drained
                 so_line_id=None,
                 note=note,
                 state=OutboxState.PENDING.value,

@@ -66,17 +66,17 @@ async def test_unbillable_entry_stays_unbillable_after_a_subsequent_unrelated_wr
         await _cleanup(odoo_client, session_factory, entry)
 
 
-async def test_internal_entry_lands_on_the_internal_project(
-    entry_service, odoo_client, session_factory, internal_target
+async def test_entry_on_an_unbillable_project_the_employee_is_not_mapped_to_lands_unbillable(
+    entry_service, odoo_client, session_factory, unbillable_target
 ):
     entry = await entry_service.create_entry(
-        employee_id=TM_EMPLOYEE_ID, **internal_target, date=TODAY, hours=1.0, note="internal test"
+        employee_id=TM_EMPLOYEE_ID, **unbillable_target, date=TODAY, hours=1.0, note="internal test"
     )
     try:
         record = await _line(odoo_client, entry)
-        assert record["project_id"][0] == internal_target["project_id"]
+        assert record["project_id"][0] == unbillable_target["project_id"]
         assert record["so_line"] is False
-        assert entry.project_label == "Internal"
+        assert entry.project_label == "TEMP unbillable project"
     finally:
         await _cleanup(odoo_client, session_factory, entry)
 

@@ -113,14 +113,17 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
   const projectTotals = useMemo(() => {
     const totals = new Map<number, { label: string; total: number }>();
     for (const entry of entries) {
-      const row = totals.get(entry.project_id) ?? { label: entry.project_label, total: 0 };
+      const row = totals.get(entry.project_id) ?? {
+        label: catalog.find((p) => p.project_id === entry.project_id)?.label ?? entry.project_label,
+        total: 0,
+      };
       row.total += entry.hours;
       totals.set(entry.project_id, row);
     }
     return Array.from(totals.entries())
       .map(([id, row]) => ({ id, ...row }))
       .sort((a, b) => b.total - a.total);
-  }, [entries]);
+  }, [entries, catalog]);
 
   const selectedProject = catalog.find((p) => p.project_id === projectId);
 
@@ -165,6 +168,9 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
       setSaving(false);
     }
   }
+
+  // The catalog's label (client name) wins; the entry's own is Odoo's project name, used until the catalog arrives.
+  const projectLabel = (e: Entry) => catalog.find((p) => p.project_id === e.project_id)?.label ?? e.project_label;
 
   const monthLabel = MONTH_NAMES[today.getMonth()];
   const isLocked = periodState === "locked";
@@ -319,7 +325,7 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
                               />
                             ) : (
                               <>
-                                {entry.hours.toFixed(2)}h — {entry.project_label} — {entry.task_name ?? "No task"}
+                                {entry.hours.toFixed(2)}h — {projectLabel(entry)} — {entry.task_name ?? "No task"}
                                 {entry.note.trim() ? ` — ${entry.note}` : ""}
                                 {entry.sync_state !== "synced" ? ` (${entry.sync_state})` : ""}
                                 {!isLocked && entry.id !== null && entry.sync_state === "synced" && (

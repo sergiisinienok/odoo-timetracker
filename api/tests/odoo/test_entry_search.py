@@ -77,7 +77,7 @@ async def _cleanup_all(odoo_client, session_factory, entries):
 
 
 @pytest.fixture
-async def three_months_of_entries(entry_service, odoo_client, session_factory, internal_target, make_task):
+async def three_months_of_entries(entry_service, odoo_client, session_factory, unbillable_target, make_task):
     paid_target = {"project_id": 2, "task_id": await make_task(2, "search paid", "same")}
     marker = uuid.uuid4().hex[:8]
     month_a = await _day_with_room(odoo_client, 2)
@@ -88,9 +88,9 @@ async def three_months_of_entries(entry_service, odoo_client, session_factory, i
     entries = []
     try:
         for target, day, note in (
-            (internal_target, month_a, "alpha entry"),
-            (internal_target, month_b, "bravo entry"),
-            (internal_target, month_c, "gamma one"),
+            (unbillable_target, month_a, "alpha entry"),
+            (unbillable_target, month_b, "bravo entry"),
+            (unbillable_target, month_c, "gamma one"),
             (paid_target, month_c, "gamma two"),
         ):
             entries.append(await _create(entry_service, target=target, date=day, note=f"{marker} {note}"))
@@ -105,7 +105,7 @@ async def three_months_of_entries(entry_service, odoo_client, session_factory, i
             "gamma_internal": gamma_internal,
             "gamma_paid": gamma_paid,
             "paid_target": paid_target,
-            "internal_target": internal_target,
+            "unbillable_target": unbillable_target,
         }
     finally:
         await _cleanup_all(odoo_client, session_factory, entries)
@@ -147,14 +147,14 @@ async def test_task_filter_returns_only_that_task(entry_service, three_months_of
         employee_id=TM_EMPLOYEE_ID,
         month=None,
         project_id=None,
-        task_id=data["internal_target"]["task_id"],
+        task_id=data["unbillable_target"]["task_id"],
         q=data["marker"],
         limit=50,
         offset=0,
     )
     assert total == 3
     assert {i.id for i in items} == {data[k].id for k in ("alpha", "bravo", "gamma_internal")}
-    assert all(i.task_id == data["internal_target"]["task_id"] for i in items)
+    assert all(i.task_id == data["unbillable_target"]["task_id"] for i in items)
 
 
 async def test_note_search_matches_substring(entry_service, three_months_of_entries):

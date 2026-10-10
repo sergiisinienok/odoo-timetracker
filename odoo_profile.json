@@ -37,5 +37,7 @@
   "line_task_field": "task_id",
   "so_line_manual_marker_field": "is_so_line_edited",
   "so_line_manual_marker_reliable": true,
-  "unpaid_recipe_with_task": "create() with so_line=False passed explicitly"
+  "unpaid_recipe_with_task": "create() with so_line=False passed explicitly",
+  "project_timesheets_field": "allow_timesheets",
+  "project_internal_field": "is_internal_project"
 }

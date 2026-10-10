@@ -121,7 +121,7 @@ def _snapshot():
 
 
 async def test_catalog_falls_back_to_last_known_when_odoo_is_down(monkeypatch):
-    svc = CatalogService(MagicMock(), MagicMock(), 1)
+    svc = CatalogService(MagicMock(), MagicMock())
     calls = iter([_snapshot(), OdooUnavailable("down")])
 
     async def build(employee_id):
@@ -139,7 +139,7 @@ async def test_catalog_falls_back_to_last_known_when_odoo_is_down(monkeypatch):
 async def test_a_fresh_snapshot_still_falls_back_to_last_known_when_odoo_is_down(monkeypatch):
     """A save asks for fresh data (is the task open *now*) but must still work
     through an outage, from what was last seen."""
-    svc = CatalogService(MagicMock(), MagicMock(), 1)
+    svc = CatalogService(MagicMock(), MagicMock())
     calls = iter([_snapshot(), OdooUnavailable("down")])
 
     async def build(employee_id):
@@ -154,7 +154,7 @@ async def test_a_fresh_snapshot_still_falls_back_to_last_known_when_odoo_is_down
 
 
 async def test_catalog_with_no_last_known_still_raises(monkeypatch):
-    svc = CatalogService(MagicMock(), MagicMock(), 1)
+    svc = CatalogService(MagicMock(), MagicMock())
 
     async def build(employee_id):
         raise OdooUnavailable("down")
@@ -170,7 +170,7 @@ async def test_catalog_with_no_last_known_still_raises(monkeypatch):
 def _entries(*odoo_results):
     outbox = MagicMock()
     outbox.pending_hours_for = AsyncMock(return_value=Decimal(0))
-    return EntryService(ScriptedOdoo(*odoo_results), MagicMock(), MagicMock(), MagicMock(), outbox, 1, Decimal(10))
+    return EntryService(ScriptedOdoo(*odoo_results), MagicMock(), MagicMock(), MagicMock(), outbox, Decimal(10))
 
 
 DAY = date(2026, 9, 24)

@@ -28,10 +28,9 @@ async def send_digest_now(
     session_factory: async_sessionmaker[AsyncSession],
     recipients: str,
     profile: OdooProfile,
-    internal_project_id: int,
 ) -> int:
     now = datetime.now(UTC)
-    digest = await gather(odoo, session_factory, now, profile, internal_project_id)
+    digest = await gather(odoo, session_factory, now, profile)
     subject, body = render(digest, now.date())
     mail_id = await send(odoo, recipients, subject, body)
     logger.info("ops digest queued in odoo", extra={"mail_id": mail_id, "empty": digest.is_empty})
@@ -44,7 +43,6 @@ async def run_digest_loop(
     recipients: str,
     hour_utc: int,
     profile: OdooProfile,
-    internal_project_id: int,
 ) -> None:
     if not recipients:
         logger.warning("OPS_DIGEST_TO is empty — daily digest disabled")
@@ -52,6 +50,6 @@ async def run_digest_loop(
     while True:
         await asyncio.sleep(seconds_until(datetime.now(UTC), hour_utc))
         try:
-            await send_digest_now(odoo, session_factory, recipients, profile, internal_project_id)
+            await send_digest_now(odoo, session_factory, recipients, profile)
         except Exception:  # a failed digest must not take the outbox worker down with it
             logger.exception("ops digest failed")

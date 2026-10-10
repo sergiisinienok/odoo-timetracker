@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
         logger.warning("odoo authentication failed at startup", exc_info=True)
 
     employee_resolver = EmployeeResolver(odoo)
-    catalog_service = CatalogService(odoo, profile, settings.internal_project_id) if profile is not None else None
+    catalog_service = CatalogService(odoo, profile) if profile is not None else None
     period_service = PeriodService(odoo, profile) if profile is not None else None
     session_factory = make_session_factory(settings.database_url)
     outbox_service = (
@@ -74,7 +74,6 @@ async def lifespan(app: FastAPI):
             catalog_service,
             period_service,
             outbox_service,
-            settings.internal_project_id,
             settings.daily_hour_cap,
         )
         if profile is not None

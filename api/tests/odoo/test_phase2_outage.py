@@ -37,19 +37,17 @@ async def _lines_named(odoo, prefix):
 
 
 async def test_input_survives_an_outage_and_drains_to_exactly_one_line_each(
-    odoo_client, session_factory, profile, internal_target
+    odoo_client, session_factory, profile, unbillable_target
 ):
     """The employee has the app open (catalog and period cached), Odoo goes
     away, they save three entries; Odoo comes back. Nothing may be refused or
     lost, and the drain must leave exactly one Odoo line per entry."""
     settings = Settings.from_env()
     switch = SwitchableOdoo(odoo_client)
-    catalog = CatalogService(switch, profile, settings.internal_project_id)
+    catalog = CatalogService(switch, profile)
     periods = PeriodService(switch, profile)
     outbox = OutboxService(session_factory, switch, profile, periods)
-    service = EntryService(
-        switch, profile, catalog, periods, outbox, settings.internal_project_id, settings.daily_hour_cap
-    )
+    service = EntryService(switch, profile, catalog, periods, outbox, settings.daily_hour_cap)
     # Warm, as after loading the page: the month view, the project and task pickers
     # and the period state are what the UI reads before anyone saves.
     await service.list_for_employee_month(EMP, TODAY.year, TODAY.month)
@@ -63,7 +61,7 @@ async def test_input_survives_an_outage_and_drains_to_exactly_one_line_each(
         for i, hours in enumerate([1.0, 1.5, 2.0]):
             entries.append(
                 await service.create_entry(
-                    employee_id=EMP, **internal_target, date=TODAY.isoformat(), hours=hours, note=f"{prefix} {i}"
+                    employee_id=EMP, **unbillable_target, date=TODAY.isoformat(), hours=hours, note=f"{prefix} {i}"
                 )
             )
         assert [e.sync_state for e in entries] == ["pending"] * 3, "input must be accepted as pending, not refused"
@@ -100,16 +98,14 @@ async def test_input_survives_an_outage_and_drains_to_exactly_one_line_each(
 def _stack(odoo_client, session_factory, profile):
     settings = Settings.from_env()
     switch = SwitchableOdoo(odoo_client)
-    catalog = CatalogService(switch, profile, settings.internal_project_id)
+    catalog = CatalogService(switch, profile)
     periods = PeriodService(switch, profile)
     outbox = OutboxService(session_factory, switch, profile, periods)
-    service = EntryService(
-        switch, profile, catalog, periods, outbox, settings.internal_project_id, settings.daily_hour_cap
-    )
+    service = EntryService(switch, profile, catalog, periods, outbox, settings.daily_hour_cap)
     return switch, service, settings
 
 
-async def test_the_daily_cap_still_holds_during_an_outage(odoo_client, session_factory, profile, internal_target):
+async def test_the_daily_cap_still_holds_during_an_outage(odoo_client, session_factory, profile, unbillable_target):
     """The page was loaded (month view warms the last-known day), Odoo goes away,
     and queued hours count toward the cap — an outage must not become a way
     round it."""
@@ -129,7 +125,7 @@ async def test_the_daily_cap_still_holds_during_an_outage(odoo_client, session_f
         entries.append(
             await service.create_entry(
                 employee_id=EMP,
-                **internal_target,
+                **unbillable_target,
                 date=TODAY.isoformat(),
                 hours=float(first),
                 note=f"{prefix} a",
@@ -138,14 +134,14 @@ async def test_the_daily_cap_still_holds_during_an_outage(odoo_client, session_f
         assert entries[0].sync_state == "pending"
         with pytest.raises(DailyCapExceeded):  # 1h of room left, asking for 2
             await service.create_entry(
-                employee_id=EMP, **internal_target, date=TODAY.isoformat(), hours=2.0, note=f"{prefix} b"
+                employee_id=EMP, **unbillable_target, date=TODAY.isoformat(), hours=2.0, note=f"{prefix} b"
             )
     finally:
         await _forget_outbox(session_factory, [e.outbox_id for e in entries if e.outbox_id])
 
 
 async def test_with_nothing_cached_an_outage_refuses_and_says_so_plainly(
-    odoo_client, session_factory, profile, internal_target
+    odoo_client, session_factory, profile, unbillable_target
 ):
     """A cold cache (fresh process, or older than the ceiling) cannot check the
     limit. Refusing is right; the failure is a 503 the employee can read."""
@@ -153,6 +149,6 @@ async def test_with_nothing_cached_an_outage_refuses_and_says_so_plainly(
     switch.down = True
     with pytest.raises(OdooUnavailable):
         await service.create_entry(
-            employee_id=EMP, **internal_target, date=TODAY.isoformat(), hours=1.0, note="phase2-gate cold"
+            employee_id=EMP, **unbillable_target, date=TODAY.isoformat(), hours=1.0, note="phase2-gate cold"
         )
     assert await _lines_named(odoo_client, "phase2-gate cold") == []

@@ -55,7 +55,6 @@ def entry_service(odoo_client, profile, make_catalog_service, period_service, ou
         make_catalog_service(),
         period_service,
         outbox_service,
-        settings.internal_project_id,
         settings.daily_hour_cap,
     )
 
@@ -63,10 +62,9 @@ def entry_service(odoo_client, profile, make_catalog_service, period_service, ou
 @pytest.fixture
 def make_catalog_service(odoo_client, profile):
     """A fresh CatalogService per call, so each sees Odoo uncached."""
-    settings = Settings.from_env()
 
     def make(odoo=None):
-        return CatalogService(odoo or odoo_client, profile, settings.internal_project_id)
+        return CatalogService(odoo or odoo_client, profile)
 
     return make
 
@@ -106,11 +104,12 @@ def make_task(temp_records, profile):
 
 
 @pytest.fixture
-async def internal_target(make_task):
-    """Where tests that just need *an* entry log it: a Not-billable task on
-    the internal project (the way ops sets PTO, Bench and so on)."""
-    settings = Settings.from_env()
-    return {
-        "project_id": settings.internal_project_id,
-        "task_id": await make_task(settings.internal_project_id, "internal", "no"),
-    }
+async def unbillable_target(temp_records, make_task):
+    """Where tests that just need *an* entry log it: a Not-billable task on an
+    unbillable project the employee is not mapped to — open to everyone since
+    decision 0014. The project is created here, so nothing depends on ids in
+    the sandbox; it is removed after its tasks and lines."""
+    project_id = await temp_records(
+        "project.project", {"name": "TEMP unbillable project", "allow_billable": False, "allow_timesheets": True}
+    )
+    return {"project_id": project_id, "task_id": await make_task(project_id, "unbillable", "no")}

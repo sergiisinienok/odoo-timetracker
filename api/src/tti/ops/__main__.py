@@ -24,7 +24,6 @@ async def main() -> None:
             make_session_factory(settings.database_url),
             settings.ops_digest_to,
             profile,
-            settings.internal_project_id,
         )
     finally:
         await odoo.aclose()

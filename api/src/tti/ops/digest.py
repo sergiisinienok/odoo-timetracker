@@ -216,7 +216,6 @@ async def gather(
     session_factory: async_sessionmaker[AsyncSession],
     now: datetime,
     profile: OdooProfile,
-    internal_project_id: int,
 ) -> Digest:
     pending_rows, failed_rows = await _outbox_items(session_factory, now)
 
@@ -258,9 +257,7 @@ async def gather(
     with_recent_entry = {r["employee_id"][0] for r in recent}
 
     billing_warnings = await _billing_warnings(session_factory, now, names)
-    projects_without_tasks = await _projects_without_tasks(
-        odoo, profile, {m["project_id"][0] for m in mapped} | {internal_project_id}
-    )
+    projects_without_tasks = await _projects_without_tasks(odoo, profile, {m["project_id"][0] for m in mapped})
 
     return Digest(
         stuck_pending=[item(r) for r in pending_rows],
