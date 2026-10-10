@@ -4,26 +4,28 @@ export type Me = {
   timezone: string;
 };
 
-export type Assignment = {
-  id: string;
-  kind: string;
-  project_id: number | null;
-  so_line_id: number | null;
+export type CatalogTask = { id: number; name: string };
+
+// One entry per project this employee may log against, with its open tasks.
+// Deliberately no billing field of any kind: the employee is never shown it.
+export type CatalogProject = {
+  project_id: number;
   label: string;
   is_default: boolean;
-  start_date: string | null;
-  end_date: string | null;
+  last_used_task_id: number | null;
+  tasks: CatalogTask[];
 };
 
 export type Entry = {
   id: number | null;
   outbox_id: string | null;
-  assignment_id: string;
+  project_id: number;
+  project_label: string;
+  task_id: number | null; // null on lines logged before tasks existed
+  task_name: string | null;
   date: string;
   hours: number;
   note: string;
-  project_id: number;
-  so_line_id: number | null;
   sync_state: "synced" | "pending" | "failed";
 };
 
@@ -53,4 +55,10 @@ export function todayLocal(): string {
   const now = new Date();
   const offsetMs = now.getTimezoneOffset() * 60 * 1000;
   return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
+}
+
+/** The task to pre-fill for a project: the one last used there, if it is still open. */
+export function prefilledTask(project: CatalogProject | undefined): string {
+  if (!project || project.last_used_task_id === null) return "";
+  return project.tasks.some((t) => t.id === project.last_used_task_id) ? String(project.last_used_task_id) : "";
 }

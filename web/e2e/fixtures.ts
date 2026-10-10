@@ -12,6 +12,10 @@
  *     every test needing an open month timed out after 30 s with no hint why.
  *     Now the suite refuses to start, at once, with a message that says so.
  *
+ *  3. Tasks (Phase 2b). Specs create their own tasks through `createTask`, named
+ *     with E2E_PREFIX, and the sweep removes them *after* the lines that point at
+ *     them (Odoo refuses to delete a task a line still references).
+ *
  *  2. Leftover data. Odoo lines and outbox rows from a failed or aborted run
  *     accumulated, and one test cleaned up by deleting every line dated today
  *     for the employee (which would also delete real entries). Now every line and
@@ -53,7 +57,7 @@ async function rpc(service: string, method: string, args: unknown[]): Promise<an
 }
 
 let cachedUid: number | null = null;
-async function model(modelName: string, method: string, args: unknown[], kwargs: object = {}): Promise<any> {
+export async function model(modelName: string, method: string, args: unknown[], kwargs: object = {}): Promise<any> {
   cachedUid ??= (await rpc("common", "authenticate", [ODOO_DB, ODOO_USER, ODOO_KEY, {}])) as number;
   return rpc("object", "execute_kw", [ODOO_DB, cachedUid, ODOO_KEY, modelName, method, args, kwargs]);
 }
@@ -84,7 +88,7 @@ async function sweepOdooLines(): Promise<number> {
   return ids.length;
 }
 
-async function restartApiToDropWarmCaches(): Promise<void> {
+export async function restartApiToDropWarmCaches(): Promise<void> {
   // PeriodService caches the validated-through date for 5 minutes; a direct Odoo write is invisible to it.
   execFileSync("docker", ["compose", "restart", "api"], { cwd: REPO_ROOT });
   for (let i = 0; i < 30; i++) {
@@ -98,9 +102,46 @@ async function restartApiToDropWarmCaches(): Promise<void> {
   throw new Error("api did not become healthy after restart");
 }
 
+async function sweepTasks(): Promise<number> {
+  const ids: number[] = await model("project.task", "search", [
+    [["name", "=like", `${E2E_PREFIX}%`], ["active", "in", [true, false]]],
+  ]);
+  if (ids.length) await model("project.task", "unlink", [ids]);
+  return ids.length;
+}
+
 async function sweepAll(): Promise<void> {
   await sweepOdooLines();
+  await sweepTasks(); // after the lines that reference them
   sweepOutbox();
+}
+
+/** A task on `projectId`, named so the sweep removes it. `extra` passes Odoo values straight through. */
+export async function createTask(projectId: number, name: string, extra: Record<string, unknown> = {}): Promise<number> {
+  const id = await model("project.task", "create", [{ name: `${E2E_PREFIX} ${name}`, project_id: projectId, ...extra }]);
+  return Array.isArray(id) ? id[0] : id;
+}
+
+/** A timesheet line for employee 1; the note is always prefixed so the sweep removes it. */
+export async function createLine(values: {
+  projectId: number;
+  taskId?: number;
+  date: string;
+  hours: number;
+  note: string;
+}): Promise<number> {
+  const id = await model("account.analytic.line", "create", [
+    {
+      employee_id: TM_EMPLOYEE_ID,
+      project_id: values.projectId,
+      ...(values.taskId ? { task_id: values.taskId } : {}),
+      date: values.date,
+      unit_amount: values.hours,
+      name: `${E2E_PREFIX} ${values.note}`,
+      so_line: false,
+    },
+  ]);
+  return Array.isArray(id) ? id[0] : id;
 }
 
 export const test = base.extend<{ cleanAfterTest: void }, { suiteGuard: void }>({

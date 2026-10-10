@@ -8,7 +8,7 @@
  * Same sign-in bypass as web/e2e/entry-flow.spec.ts, same reasoning —
  * see that file's own comment.
  */
-import { E2E_PREFIX, expect, test } from "./fixtures";
+import { E2E_PREFIX, createLine, createTask, expect, restartApiToDropWarmCaches, test } from "./fixtures";
 import jwt from "jsonwebtoken";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -29,6 +29,7 @@ if (!SESSION_SECRET || !ODOO_URL || !ODOO_DB || !ODOO_USER || !ODOO_KEY) {
 }
 
 const TM_EMPLOYEE_ID = 1;
+const PROJECT_ID = 2; // S00001, billable, employee 1 mapped
 const API_DIR = path.resolve(__dirname, "../../api");
 // .env's DATABASE_URL points at the "db" hostname, which only resolves
 // inside the docker-compose network — same fix as api/tests/conftest.py's.
@@ -73,26 +74,17 @@ function todayIso(): string {
 
 const REPO_ROOT = path.resolve(API_DIR, "..");
 
-async function restartApiToDropWarmCaches(): Promise<void> {
-  // PeriodService caches validated-through for 5 minutes per employee
-  // (step 2.2) — the running api process has no way to be told from
-  // outside that a direct Odoo write just changed it. Restarting is the
-  // only way to get a cold cache for this specific test without waiting
-  // out the TTL.
-  execFileSync("docker", ["compose", "restart", "api"], { cwd: REPO_ROOT });
-  for (let i = 0; i < 30; i++) {
-    try {
-      const res = await fetch("http://localhost/api/healthz");
-      if (res.ok) return;
-    } catch {
-      // not up yet
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error("api did not become healthy after restart");
+// The catalog is cached for 60 s, so a task created straight in Odoo only shows
+// after the api restarts.
+async function seedPrefilledTask(name: string, hours = 0.25): Promise<number> {
+  const taskId = await createTask(PROJECT_ID, name);
+  await createLine({ projectId: PROJECT_ID, taskId, date: todayIso(), hours, note: `${name} seed` });
+  await restartApiToDropWarmCaches();
+  return taskId;
 }
 
 test("logs an entry in under 60 seconds from a cold load", async ({ page, context }) => {
+  await seedPrefilledTask("quick add task");
   const start = Date.now();
 
   await context.addCookies([
@@ -100,6 +92,7 @@ test("logs an entry in under 60 seconds from a cold load", async ({ page, contex
   ]);
   await page.goto("/");
 
+  await page.getByLabel("Project").selectOption(String(PROJECT_ID));
   await page.getByRole("spinbutton", { name: "Hours" }).fill("1");
   await page.getByPlaceholder("Note (optional)").fill(`${E2E_PREFIX} quick add`);
   await page.getByRole("button", { name: "Save entry" }).click();
@@ -112,32 +105,20 @@ test("logs an entry in under 60 seconds from a cold load", async ({ page, contex
 });
 
 test("the daily cap is refused with a clear message", async ({ page, context }) => {
-  const uid = await odooUid();
-  // A pre-existing line consuming most of the day, over an unpaid
-  // assignment (the internal project) so the app's own default-cap
-  // config doesn't need touching for this test.
-  const preExistingId = (await odooCall("object", "execute_kw", [
-    ODOO_DB,
-    uid,
-    ODOO_KEY,
-    "account.analytic.line",
-    "create",
-    [{ employee_id: TM_EMPLOYEE_ID, project_id: 1, date: todayIso(), unit_amount: 9.5, name: `${E2E_PREFIX} cap test: pre-existing` }],
-  ])) as number;
+  // A pre-existing line consuming most of the day. It sits on a task, so that
+  // task is also the one the form pre-fills. The fixtures sweep it afterwards.
+  await seedPrefilledTask("cap test task", 9.5);
 
-  try {
-    await context.addCookies([
-      { name: "tti_session", value: sessionCookie(TM_EMPLOYEE_ID), url: "http://localhost", httpOnly: true, sameSite: "Lax" },
-    ]);
-    await page.goto("/");
+  await context.addCookies([
+    { name: "tti_session", value: sessionCookie(TM_EMPLOYEE_ID), url: "http://localhost", httpOnly: true, sameSite: "Lax" },
+  ]);
+  await page.goto("/");
 
-    await page.getByRole("spinbutton", { name: "Hours" }).fill("1");
-    await page.getByRole("button", { name: "Save entry" }).click();
+  await page.getByLabel("Project").selectOption(String(PROJECT_ID));
+  await page.getByRole("spinbutton", { name: "Hours" }).fill("1");
+  await page.getByRole("button", { name: "Save entry" }).click();
 
-    await expect(page.getByText(/over your daily limit/)).toBeVisible();
-  } finally {
-    await odooCall("object", "execute_kw", [ODOO_DB, uid, ODOO_KEY, "account.analytic.line", "unlink", [[preExistingId]]]);
-  }
+  await expect(page.getByText(/over your daily limit/)).toBeVisible();
 });
 
 test("a locked month renders read-only with no editable control", async ({ page, context }) => {
@@ -214,28 +195,38 @@ test("the pending state renders during a simulated outage", async ({ page, conte
   }
 });
 
-test("no API response body carries a rate, amount, or currency field", async ({ request }) => {
+test("no API response body carries a rate, amount, currency or billing field", async ({ request }) => {
   const cookie = `tti_session=${sessionCookie(TM_EMPLOYEE_ID)}`;
-  const forbidden = /\b(price|rate|currency)\b|"amount"|[$€£]/i;
+  // Field names only: task and project names are ops' data and may well say
+  // "Flat Rate" or "Billable". The employee must never be shown billability.
+  const forbiddenKey = /price|rate|amount|currency|bill|so_line|sale_line|invoice/i;
 
-  const endpoints = ["/api/me", "/api/assignments", "/api/periods", "/api/entries"];
+  function keysOf(value: unknown, into: Set<string> = new Set()): Set<string> {
+    if (Array.isArray(value)) value.forEach((v) => keysOf(v, into));
+    else if (value && typeof value === "object") {
+      for (const [k, v] of Object.entries(value)) {
+        into.add(k);
+        keysOf(v, into);
+      }
+    }
+    return into;
+  }
+
+  const endpoints = ["/api/me", "/api/catalog", "/api/periods", "/api/entries", "/api/entries/search"];
   for (const url of endpoints) {
     const res = await request.get(`http://localhost${url}`, { headers: { Cookie: cookie } });
-    const text = await res.text();
-    expect(text, `${url} response body`).not.toMatch(forbidden);
+    const keys = [...keysOf(await res.json())];
+    expect(keys.filter((k) => forbiddenKey.test(k)), `${url} response keys`).toEqual([]);
   }
 
   // POST's response body too — the thing that most resembles an invoice line.
+  const taskId = await createTask(PROJECT_ID, "money-leak task");
+  await restartApiToDropWarmCaches();
   const postRes = await request.post("http://localhost/api/entries", {
     headers: { Cookie: cookie, "Content-Type": "application/json" },
-    data: { assignment_id: "internal", date: todayIso(), hours: 0.25, note: `${E2E_PREFIX} money-leak check` },
+    data: { project_id: PROJECT_ID, task_id: taskId, date: todayIso(), hours: 0.25, note: `${E2E_PREFIX} money-leak check` },
   });
-  const postText = await postRes.text();
-  expect(postText).not.toMatch(forbidden);
-
-  const created = JSON.parse(postText);
-  if (created.id) {
-    const uid = await odooUid();
-    await odooCall("object", "execute_kw", [ODOO_DB, uid, ODOO_KEY, "account.analytic.line", "unlink", [[created.id]]]);
-  }
+  expect(postRes.status()).toBe(201);
+  const keys = [...keysOf(await postRes.json())];
+  expect(keys.filter((k) => forbiddenKey.test(k)), "POST /api/entries response keys").toEqual([]);
 });

@@ -160,6 +160,7 @@ class EntryService:
                 employee_id, result.odoo_line_id, outbox_id=str(result.outbox_id), warning=warning
             )
             self._remember_line(employee_id, entry_date, result.odoo_line_id, hours_decimal)
+            self._catalog.invalidate(employee_id)
             return entry
 
         # PENDING — Odoo unavailable or the outcome was uncertain. Nothing
@@ -184,6 +185,10 @@ class EntryService:
         if existing.employee_id != employee_id:
             raise EntryNotOwned(f"employee {employee_id} does not own line {odoo_line_id}")
 
+        # The plan's guard order (step 2.4): owns the line, period open, then the
+        # rest. A locked month is refused as locked whatever else is wrong.
+        await self._periods.guard(employee_id, existing.date)
+
         hours_decimal = Decimal(str(hours))
         validate_increment(hours_decimal)
 
@@ -205,10 +210,8 @@ class EntryService:
 
         entry_date = date_type.fromisoformat(date)
 
-        # Both ends of a move matter: the line's current date (can't touch
-        # a locked entry at all) and the new date (can't move it somewhere
-        # locked either).
-        await self._periods.guard(employee_id, existing.date)
+        # The line's current date was guarded above; the new date matters too
+        # (can't move an entry somewhere locked).
         if entry_date != existing.date:
             await self._periods.guard(employee_id, entry_date)
 
@@ -239,6 +242,7 @@ class EntryService:
         if result.state is OutboxState.SYNCED:
             self._forget_line(employee_id, existing.date, odoo_line_id)
             self._remember_line(employee_id, entry_date, odoo_line_id, hours_decimal)
+            self._catalog.invalidate(employee_id)
             return await self._read_back(employee_id, odoo_line_id, outbox_id=str(result.outbox_id), warning=warning)
 
         return self._pending_entry(
@@ -263,6 +267,7 @@ class EntryService:
 
         if result.state is OutboxState.SYNCED:
             self._forget_line(employee_id, existing.date, odoo_line_id)
+            self._catalog.invalidate(employee_id)
             return "synced"
         return "pending"
 

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Assignment, Entry, Me, Period } from "./api";
-import { currentMonthKey, fetchJson, todayLocal } from "./api";
+import type { CatalogProject, Entry, Me, Period } from "./api";
+import { currentMonthKey, fetchJson, prefilledTask, todayLocal } from "./api";
+import { EntryEditor } from "./EntryEditor";
+import { describeSaveError } from "./errors";
 import { Logo } from "./Logo";
 
 const MONTH_NAMES = [
@@ -23,28 +25,6 @@ const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // the server is the sole authority on the real cap (Appendix F: "the
 // client mirrors the server's rules but the server is the authority").
 const BAR_SCALE_HOURS = 10;
-
-// Appendix F's Voice section gives exact copy for the known rejections —
-// the raw {error, message} from the API is a technical detail, not what
-// an employee should read. Unknown codes fall back to the server's own
-// message rather than inventing copy for a case the plan didn't specify.
-function describeSaveError(code: string, rawMessage: string, weekday: string): string {
-  switch (code) {
-    case "daily_cap_exceeded":
-      // The plan's own example names a specific number ("over 10 hours"),
-      // but the real cap isn't exposed to the client (server is the sole
-      // authority on it) — phrased generically rather than guessing it.
-      return `That would put ${weekday} over your daily limit. Reduce the entry, or ask ops to raise your daily limit.`;
-    case "period_locked":
-      return "That date is approved and closed. Ask your approver to change anything in it.";
-    case "assignment_not_valid_on_date":
-      return "That assignment isn't valid on this date.";
-    case "invalid_increment":
-      return "Hours must be a positive multiple of a quarter hour.";
-    default:
-      return rawMessage;
-  }
-}
 
 type DayGroup = {
   dateKey: string;
@@ -84,12 +64,14 @@ function buildDays(today: Date, entries: Entry[]): DayGroup[] {
 }
 
 export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => void }) {
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [catalog, setCatalog] = useState<CatalogProject[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [periodState, setPeriodState] = useState<"open" | "locked" | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
 
-  const [assignmentId, setAssignmentId] = useState("");
+  const [projectId, setProjectId] = useState<number | null>(null);
+  const [taskId, setTaskId] = useState("");
+  const [editingKey, setEditingKey] = useState<number | null>(null);
   const [date, setDate] = useState(todayLocal());
   const [hours, setHours] = useState("1");
   const [note, setNote] = useState("");
@@ -99,22 +81,25 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
   const today = useMemo(() => new Date(), []);
 
   const load = useCallback(async () => {
-    const [assignmentsRes, entriesRes, periodsRes] = await Promise.all([
-      fetchJson<Assignment[]>("/api/assignments"),
+    const [catalogRes, entriesRes, periodsRes] = await Promise.all([
+      fetchJson<CatalogProject[]>("/api/catalog"),
       fetchJson<Entry[]>("/api/entries"),
       fetchJson<Period[]>("/api/periods"),
     ]);
-    setAssignments(assignmentsRes.body);
+    setCatalog(catalogRes.body);
     setEntries(entriesRes.body);
 
     const key = currentMonthKey(new Date());
     const thisMonth = periodsRes.body.find((p) => p.month === key);
     setPeriodState(thisMonth?.state ?? "open");
 
-    setAssignmentId((current) => {
-      if (current) return current;
-      const preferred = assignmentsRes.body.find((a) => a.is_default) ?? assignmentsRes.body[0];
-      return preferred?.id ?? "";
+    // First load: the employee's default project, with the task they last
+    // used there. Later reloads keep whatever they have chosen.
+    setProjectId((current) => {
+      if (current !== null) return current;
+      const preferred = catalogRes.body.find((p) => p.is_default) ?? catalogRes.body[0];
+      setTaskId(prefilledTask(preferred));
+      return preferred?.project_id ?? null;
     });
   }, []);
 
@@ -125,19 +110,24 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
   const days = useMemo(() => buildDays(today, entries), [today, entries]);
   const monthTotal = entries.reduce((sum, e) => sum + e.hours, 0);
 
-  const assignmentTotals = useMemo(() => {
-    const totals = new Map<string, number>();
+  const projectTotals = useMemo(() => {
+    const totals = new Map<number, { label: string; total: number }>();
     for (const entry of entries) {
-      totals.set(entry.assignment_id, (totals.get(entry.assignment_id) ?? 0) + entry.hours);
+      const row = totals.get(entry.project_id) ?? { label: entry.project_label, total: 0 };
+      row.total += entry.hours;
+      totals.set(entry.project_id, row);
     }
     return Array.from(totals.entries())
-      .map(([id, total]) => ({
-        id,
-        label: assignments.find((a) => a.id === id)?.label ?? id,
-        total,
-      }))
+      .map(([id, row]) => ({ id, ...row }))
       .sort((a, b) => b.total - a.total);
-  }, [entries, assignments]);
+  }, [entries]);
+
+  const selectedProject = catalog.find((p) => p.project_id === projectId);
+
+  function changeProject(id: number) {
+    setProjectId(id);
+    setTaskId(prefilledTask(catalog.find((p) => p.project_id === id)));
+  }
 
   function adjustHours(delta: number) {
     const current = Number(hours) || 0;
@@ -155,7 +145,7 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ assignment_id: assignmentId, date, hours: Number(hours), note }),
+          body: JSON.stringify({ project_id: projectId, task_id: Number(taskId), date, hours: Number(hours), note }),
         },
       );
       if (status !== 201 && status !== 202) {
@@ -204,16 +194,29 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
         <form className="quick-add" onSubmit={handleSave}>
           <div className="quick-add-inner">
             <select
-              aria-label="Assignment"
-              value={assignmentId}
-              onChange={(e) => setAssignmentId(e.target.value)}
+              aria-label="Project"
+              value={projectId ?? ""}
+              onChange={(e) => changeProject(Number(e.target.value))}
             >
-              {assignments.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.label}
+              {catalog.map((p) => (
+                <option key={p.project_id} value={p.project_id}>
+                  {p.label}
                 </option>
               ))}
             </select>
+            <select aria-label="Task" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
+              <option value="" disabled>
+                Choose a task
+              </option>
+              {(selectedProject?.tasks ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            {selectedProject && selectedProject.tasks.length === 0 && (
+              <p className="no-tasks">This project has no open tasks yet. Ask ops to add one.</p>
+            )}
             <input
               aria-label="Date"
               type="date"
@@ -244,7 +247,7 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
-            <button type="submit" className="save-entry" disabled={saving || !assignmentId}>
+            <button type="submit" className="save-entry" disabled={saving || projectId === null || taskId === ""}>
               {saving ? "Saving…" : "Save entry"}
             </button>
             {message && (
@@ -300,12 +303,32 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
                   {expanded && (
                     <ul className="day-entries">
                       {day.entries.map((entry, i) => {
-                        const label = assignments.find((a) => a.id === entry.assignment_id)?.label ?? entry.assignment_id;
+                        const key = entry.id ?? entry.outbox_id ?? i;
+                        const editing = entry.id !== null && editingKey === entry.id;
                         return (
-                          <li key={entry.id ?? entry.outbox_id ?? i}>
-                            {entry.hours.toFixed(2)}h — {label}
-                            {entry.note.trim() ? ` — ${entry.note}` : ""}
-                            {entry.sync_state !== "synced" ? ` (${entry.sync_state})` : ""}
+                          <li key={key}>
+                            {editing ? (
+                              <EntryEditor
+                                entry={entry}
+                                catalog={catalog}
+                                onCancel={() => setEditingKey(null)}
+                                onSaved={async () => {
+                                  setEditingKey(null);
+                                  await load();
+                                }}
+                              />
+                            ) : (
+                              <>
+                                {entry.hours.toFixed(2)}h — {entry.project_label} — {entry.task_name ?? "No task"}
+                                {entry.note.trim() ? ` — ${entry.note}` : ""}
+                                {entry.sync_state !== "synced" ? ` (${entry.sync_state})` : ""}
+                                {!isLocked && entry.id !== null && entry.sync_state === "synced" && (
+                                  <button type="button" className="entry-edit" onClick={() => setEditingKey(entry.id)}>
+                                    Edit
+                                  </button>
+                                )}
+                              </>
+                            )}
                           </li>
                         );
                       })}
@@ -318,14 +341,14 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
         )}
       </details>
 
-      {assignmentTotals.length > 0 && (
+      {projectTotals.length > 0 && (
         <details className="section" open>
-          <summary>This month, by assignment</summary>
-          <ul className="assignment-totals">
-            {assignmentTotals.map((a) => (
-              <li key={a.id}>
-                <span>{a.label}</span>
-                <span className="hours">{a.total.toFixed(1)}</span>
+          <summary>This month, by project</summary>
+          <ul className="project-totals">
+            {projectTotals.map((p) => (
+              <li key={p.id}>
+                <span>{p.label}</span>
+                <span className="hours">{p.total.toFixed(1)}</span>
               </li>
             ))}
           </ul>

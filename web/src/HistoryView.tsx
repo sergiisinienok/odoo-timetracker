@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Assignment, Entry, Period } from "./api";
+import type { CatalogProject, Entry, Period } from "./api";
 import { fetchJson } from "./api";
 import { Logo } from "./Logo";
 
@@ -35,11 +35,12 @@ function buildQuery(params: Record<string, string>): string {
 }
 
 export function HistoryView({ onBack }: { onBack: () => void }) {
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [catalog, setCatalog] = useState<CatalogProject[]>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
 
   const [month, setMonth] = useState("");
-  const [assignmentId, setAssignmentId] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [taskId, setTaskId] = useState("");
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
 
@@ -50,7 +51,7 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
   const requestId = useRef(0);
 
   useEffect(() => {
-    fetchJson<Assignment[]>("/api/assignments").then(({ body }) => setAssignments(body));
+    fetchJson<CatalogProject[]>("/api/catalog").then(({ body }) => setCatalog(body));
     fetchJson<Period[]>("/api/periods").then(({ body }) => setPeriods(body));
   }, []);
 
@@ -68,7 +69,8 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
     try {
       const query = buildQuery({
         month,
-        assignment_id: assignmentId,
+        project_id: projectId,
+        task_id: taskId,
         q,
         limit: String(PAGE_SIZE),
         offset: String(offset),
@@ -80,17 +82,17 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
     } finally {
       if (myRequest === requestId.current) setLoading(false);
     }
-  }, [month, assignmentId, q]);
+  }, [month, projectId, taskId, q]);
 
   useEffect(() => {
     load(0, false);
   }, [load]);
 
   const lockedMonths = useMemo(() => new Set(periods.filter((p) => p.state === "locked").map((p) => p.month)), [periods]);
-  const assignmentLabel = useMemo(() => {
-    const byId = new Map(assignments.map((a) => [a.id, a.label]));
-    return (id: string) => byId.get(id) ?? id;
-  }, [assignments]);
+  const tasksOfProject = useMemo(
+    () => catalog.find((p) => String(p.project_id) === projectId)?.tasks ?? [],
+    [catalog, projectId],
+  );
 
   const canLoadMore = items.length < total;
 
@@ -109,14 +111,31 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
 
       <div className="history-filters">
         <input aria-label="Month" type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-        <select aria-label="Assignment filter" value={assignmentId} onChange={(e) => setAssignmentId(e.target.value)}>
-          <option value="">All assignments</option>
-          {assignments.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.label}
+        <select
+          aria-label="Project filter"
+          value={projectId}
+          onChange={(e) => {
+            setProjectId(e.target.value);
+            setTaskId("");
+          }}
+        >
+          <option value="">All projects</option>
+          {catalog.map((p) => (
+            <option key={p.project_id} value={p.project_id}>
+              {p.label}
             </option>
           ))}
         </select>
+        {projectId !== "" && (
+          <select aria-label="Task filter" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
+            <option value="">All tasks</option>
+            {tasksOfProject.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           aria-label="Search notes"
           type="text"
@@ -140,7 +159,9 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
             return (
               <li key={entry.id ?? entry.outbox_id} className="history-row">
                 <span className="history-date">{formatDate(entry.date)}</span>
-                <span className="history-assignment">{assignmentLabel(entry.assignment_id)}</span>
+                <span className="history-project">
+                  {entry.project_label} — {entry.task_name ?? "No task"}
+                </span>
                 <span className="history-hours">{entry.hours.toFixed(2)}</span>
                 <span className="history-note">{entry.note.trim()}</span>
                 {locked && <span className="history-locked-badge">locked</span>}

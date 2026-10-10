@@ -29,7 +29,7 @@ sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
 Next: Phase 2b — Tasks and billability (inserted before the pilot, decision
-0011). 2b.1 (decision record and brief v8), 2b.3 (task probe) and 2b.4 (sample tasks), 2b.5 (billing rule), 2b.6 (catalog) and 2b.7 (entries carry a task) are done;
+0011). 2b.1 (decision record and brief v8), 2b.3 (task probe) and 2b.4 (sample tasks), 2b.5 (billing rule), 2b.6 (catalog), 2b.7 (entries carry a task) and 2b.8 (UI) are done;
 2b.2 (re-running the Phase 0 probe suite against the real
 `particlesg.odoo.com` sandbox) is **deliberately deferred** — the owner chose
 to build 2b against the trial's `.env`, so 2b.3's facts, including the Studio
@@ -39,8 +39,8 @@ re-confirmed on particlesg (decision 0013) before the pilot.
 ### Current status
 
 - Phase: 2b — Tasks and billability (Phase 2 gate passed)
-- Last completed step: 2b.7 — entries carry a task (trial only; 2b.2 skipped for now; `INTERNAL_PROJECT_ID=33` in the local `.env`, not 1)
-- Next step: 2b.8 — UI. **The web app is broken until then**: it still calls `/api/assignments` (removed) and sends `assignment_id`
+- Last completed step: 2b.8 — project and task UI (trial only; 2b.2 skipped for now; `INTERNAL_PROJECT_ID=33` in the local `.env`, not 1)
+- Next step: the Phase 2b gate — needs particlesg (2b.2), and the owner's by-hand timing of a normal day (under a minute)
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 

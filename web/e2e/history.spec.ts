@@ -168,7 +168,7 @@ test("three months, one locked: filters, search, and locked-month read-only enfo
     const cookie = `tti_session=${sessionCookie(TM_EMPLOYEE_ID)}`;
     const patchRes = await request.patch(`http://localhost/api/entries/${lineA}`, {
       headers: { Cookie: cookie, "Content-Type": "application/json" },
-      data: { assignment_id: "internal", date: isoDate(monthA), hours: 2.0, note: "should be refused" },
+      data: { project_id: 1, task_id: 1, date: isoDate(monthA), hours: 2.0, note: "should be refused" },
     });
     expect(patchRes.status()).toBe(409);
   } finally {

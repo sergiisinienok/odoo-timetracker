@@ -60,6 +60,11 @@ class CatalogService:
     async def list_for_employee(self, employee_id: int) -> list[CatalogProject]:
         return (await self.snapshot(employee_id)).projects
 
+    def invalidate(self, employee_id: int) -> None:
+        """Expire the 60 s freshness (last-known is kept): after a write, the
+        pre-filled "last used task" must reflect it on the next load."""
+        self._cache.invalidate(employee_id)
+
     async def snapshot(self, employee_id: int, *, fresh: bool = False) -> Snapshot:
         """`fresh=True` skips the 60 s cache — a save checks the task is open
         *now* — but still falls back to last-known when Odoo is unreachable."""

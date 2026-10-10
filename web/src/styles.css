@@ -362,15 +362,15 @@ select {
   padding: 4px 0;
 }
 
-/* ---- assignment totals ---- */
+/* ---- project totals ---- */
 
-.assignment-totals {
+.project-totals {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.assignment-totals li {
+.project-totals li {
   display: flex;
   justify-content: space-between;
   padding: 6px 0;
@@ -378,7 +378,7 @@ select {
   font-size: 15px;
 }
 
-.assignment-totals .hours {
+.project-totals .hours {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
@@ -553,7 +553,7 @@ select {
   color: var(--locked);
 }
 
-.history-assignment {
+.history-project {
   font-family: var(--font-aeonik);
   font-size: 15px;
   grid-column: 2;
@@ -598,4 +598,45 @@ select {
 .load-more:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* ---- tasks (Phase 2b) ---- */
+
+.no-tasks {
+  margin: 0;
+  color: var(--locked);
+  font-size: 13px;
+}
+
+.entry-edit {
+  margin-left: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--hours);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.entry-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.entry-editor select,
+.entry-editor input {
+  font: inherit;
+  padding: 8px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.entry-editor-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }

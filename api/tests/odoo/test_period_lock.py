@@ -76,3 +76,35 @@ async def test_periods_listing_reflects_the_lock(period_service, validated_throu
 
     assert by_month[locked_key] == "locked"
     assert by_month[open_key] == "open"
+
+
+async def test_a_locked_month_is_refused_as_locked_even_when_the_task_is_missing(
+    odoo_client, entry_service, validated_through_prev_month, internal_target
+):
+    line_id = await odoo_client.execute_kw(
+        "account.analytic.line",
+        "create",
+        [
+            {
+                "employee_id": TM_EMPLOYEE_ID,
+                "project_id": internal_target["project_id"],
+                "date": _LAST_OF_PREV_MONTH.isoformat(),
+                "unit_amount": 1.0,
+                "name": "2b8 locked legacy line",
+            }
+        ],
+    )
+    line_id = line_id[0] if isinstance(line_id, list) else line_id
+    try:
+        with pytest.raises(PeriodLocked):
+            await entry_service.update_entry(
+                employee_id=TM_EMPLOYEE_ID,
+                odoo_line_id=line_id,
+                project_id=internal_target["project_id"],
+                task_id=None,
+                date=_LAST_OF_PREV_MONTH.isoformat(),
+                hours=2.0,
+                note="x",
+            )
+    finally:
+        await odoo_client.execute_kw("account.analytic.line", "unlink", [[line_id]])

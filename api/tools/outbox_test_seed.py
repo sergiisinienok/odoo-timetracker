@@ -39,7 +39,6 @@ async def insert(employee_id: int, entry_date: date_type, hours: Decimal, note: 
                 op=OutboxOp.CREATE.value,
                 entry_date=entry_date,
                 hours=hours,
-                assignment="internal",
                 project_id=settings.internal_project_id,
                 so_line_id=None,
                 note=note,
