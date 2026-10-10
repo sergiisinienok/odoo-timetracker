@@ -3,6 +3,7 @@ import os
 import pytest
 
 from tti.assignments.service import AssignmentService
+from tti.catalog.service import CatalogService
 from tti.config import OdooProfile, Settings
 from tti.db.session import make_session_factory
 from tti.entries.service import EntryService
@@ -64,3 +65,14 @@ def entry_service(odoo_client, profile, assignment_service, period_service, outb
         settings.internal_project_id,
         settings.daily_hour_cap,
     )
+
+
+@pytest.fixture
+def make_catalog_service(odoo_client, profile):
+    """A fresh CatalogService per call, so each sees Odoo uncached."""
+    settings = Settings.from_env()
+
+    def make(odoo=None):
+        return CatalogService(odoo or odoo_client, profile, settings.internal_project_id)
+
+    return make
