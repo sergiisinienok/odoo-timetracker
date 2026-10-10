@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tti.assignments.service import Assignment, AssignmentService
+from tti.catalog.service import CatalogProject, CatalogService, Snapshot
 from tti.entries.service import EntryService
 from tti.lastknown import LastKnownCache
 from tti.odoo.errors import OdooUnavailable, OdooUncertain
@@ -110,25 +110,19 @@ async def test_a_cached_no_lock_value_counts_as_known():
     await svc.guard(1, date(2026, 9, 5))  # served from last-known, no raise
 
 
-# --- assignments ----------------------------------------------------------------------
+# --- catalog --------------------------------------------------------------------------
 
 
-def _assignment():
-    return Assignment(
-        id="internal",
-        kind="internal",
-        project_id=1,
-        so_line_id=None,
-        label="Internal",
-        is_default=True,
-        start_date=None,
-        end_date=None,
+def _snapshot():
+    return Snapshot(
+        projects=[CatalogProject(id=1, label="Internal", tasks=(), is_default=True, last_used_task_id=None)],
+        billing={},
     )
 
 
-async def test_assignments_fall_back_to_last_known_when_odoo_is_down(monkeypatch):
-    svc = AssignmentService(MagicMock(), MagicMock(), 1)
-    calls = iter([[_assignment()], OdooUnavailable("down")])
+async def test_catalog_falls_back_to_last_known_when_odoo_is_down(monkeypatch):
+    svc = CatalogService(MagicMock(), MagicMock(), 1)
+    calls = iter([_snapshot(), OdooUnavailable("down")])
 
     async def build(employee_id):
         r = next(calls)
@@ -137,20 +131,37 @@ async def test_assignments_fall_back_to_last_known_when_odoo_is_down(monkeypatch
         return r
 
     monkeypatch.setattr(svc, "_build", build)
-    first = await svc.list_for_employee(1)
+    first = await svc.snapshot(1)
     svc._cache.invalidate(1)
-    assert await svc.list_for_employee(1) == first
+    assert await svc.snapshot(1) == first
 
 
-async def test_assignments_with_no_last_known_still_raise(monkeypatch):
-    svc = AssignmentService(MagicMock(), MagicMock(), 1)
+async def test_a_fresh_snapshot_still_falls_back_to_last_known_when_odoo_is_down(monkeypatch):
+    """A save asks for fresh data (is the task open *now*) but must still work
+    through an outage, from what was last seen."""
+    svc = CatalogService(MagicMock(), MagicMock(), 1)
+    calls = iter([_snapshot(), OdooUnavailable("down")])
+
+    async def build(employee_id):
+        r = next(calls)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    monkeypatch.setattr(svc, "_build", build)
+    first = await svc.snapshot(1)
+    assert await svc.snapshot(1, fresh=True) == first
+
+
+async def test_catalog_with_no_last_known_still_raises(monkeypatch):
+    svc = CatalogService(MagicMock(), MagicMock(), 1)
 
     async def build(employee_id):
         raise OdooUnavailable("down")
 
     monkeypatch.setattr(svc, "_build", build)
     with pytest.raises(OdooUnavailable):
-        await svc.list_for_employee(1)
+        await svc.snapshot(1)
 
 
 # --- daily hours ----------------------------------------------------------------------

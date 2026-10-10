@@ -38,7 +38,7 @@ async def test_429_names_a_retry_time_and_a_clear_message(client):
 
 
 async def test_mutations_have_a_tighter_limit(client):
-    body = {"assignment_id": "a", "date": "2026-09-01", "hours": 1, "note": ""}
+    body = {"project_id": 1, "task_id": 2, "date": "2026-09-01", "hours": 1, "note": ""}
     headers = {"Origin": BASE_URL}
     statuses = [
         (await client.post("/entries", json=body, cookies=_cookie(ME), headers=headers)).status_code

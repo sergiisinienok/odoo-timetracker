@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tti.config import OdooProfile
 from tti.odoo.client import OdooClient
 from tti.ops.digest import gather, render, send
 
@@ -22,9 +23,15 @@ def seconds_until(now: datetime, hour_utc: int) -> float:
     return (target - now).total_seconds()
 
 
-async def send_digest_now(odoo: OdooClient, session_factory: async_sessionmaker[AsyncSession], recipients: str) -> int:
+async def send_digest_now(
+    odoo: OdooClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    recipients: str,
+    profile: OdooProfile,
+    internal_project_id: int,
+) -> int:
     now = datetime.now(UTC)
-    digest = await gather(odoo, session_factory, now)
+    digest = await gather(odoo, session_factory, now, profile, internal_project_id)
     subject, body = render(digest, now.date())
     mail_id = await send(odoo, recipients, subject, body)
     logger.info("ops digest queued in odoo", extra={"mail_id": mail_id, "empty": digest.is_empty})
@@ -32,7 +39,12 @@ async def send_digest_now(odoo: OdooClient, session_factory: async_sessionmaker[
 
 
 async def run_digest_loop(
-    session_factory: async_sessionmaker[AsyncSession], odoo: OdooClient, recipients: str, hour_utc: int
+    session_factory: async_sessionmaker[AsyncSession],
+    odoo: OdooClient,
+    recipients: str,
+    hour_utc: int,
+    profile: OdooProfile,
+    internal_project_id: int,
 ) -> None:
     if not recipients:
         logger.warning("OPS_DIGEST_TO is empty — daily digest disabled")
@@ -40,6 +52,6 @@ async def run_digest_loop(
     while True:
         await asyncio.sleep(seconds_until(datetime.now(UTC), hour_utc))
         try:
-            await send_digest_now(odoo, session_factory, recipients)
+            await send_digest_now(odoo, session_factory, recipients, profile, internal_project_id)
         except Exception:  # a failed digest must not take the outbox worker down with it
             logger.exception("ops digest failed")

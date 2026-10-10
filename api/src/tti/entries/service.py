@@ -8,11 +8,17 @@ app never claims a write succeeded on the strength of its own optimism"
 honestly marked not-yet-synced.
 
 Guards, in the order step 2.4 specifies — "employee owns the line,
-period is open, assignment is held, date is within assignment validity,
-increment is valid, daily cap holds including pending rows" — applied
-per operation: create has no existing line to own, so that check is
-moot; delete doesn't propose new hours/date/assignment, so validity/
-increment/cap don't apply to it.
+period is open, project is held, increment is valid, daily cap holds
+including pending rows" — plus, since Phase 2b, that the task is required,
+belongs to the project and is open (decision 0011). Applied per operation:
+create has no existing line to own, so that check is moot; delete doesn't
+propose new hours/date/project/task, so project/task/increment/cap don't
+apply to it.
+
+Billing is never asked of the employee. The server resolves `so_line` from
+project and task (domain/billing.py) when a line is created or its project or
+task changes, and never writes it over an approver's override — recognised by
+Odoo's own manual-edit marker (profile.so_line_manual_marker_field).
 
 `name` defaults to a single space when the note is empty — the plan
 flagged "Odoo dislikes empty descriptions" as *(verify)*; live-checked
@@ -28,12 +34,18 @@ from dataclasses import dataclass
 from datetime import date as date_type
 from decimal import Decimal
 
-from tti.assignments.service import AssignmentService
+from tti.catalog.service import CatalogService, Snapshot
 from tti.config import OdooProfile
 from tti.domain.daily_cap import validate_daily_cap
 from tti.domain.increments import validate_increment
-from tti.domain.validity import validate_within_assignment
-from tti.entries.errors import AssignmentNotHeld, EntryNotOwned
+from tti.entries.errors import (
+    BillingSetByApprover,
+    EntryNotOwned,
+    ProjectNotHeld,
+    TaskNotInProject,
+    TaskNotOpen,
+    TaskRequired,
+)
 from tti.lastknown import LastKnownCache
 from tti.odoo.client import OdooClient
 from tti.odoo.errors import OdooUnavailable, OdooUncertain
@@ -59,13 +71,27 @@ def _failure_for(last_error: str | None) -> Exception:
 class CreatedEntry:
     id: int | None  # None until synced — nothing exists in Odoo yet
     outbox_id: str | None
-    assignment_id: str
+    project_id: int
+    project_label: str
+    task_id: int | None  # None for lines logged before Phase 2b ("No task")
+    task_name: str | None
     date: str
     hours: float
     note: str
-    project_id: int
-    so_line_id: int | None
     sync_state: str  # "synced" | "pending" | "failed"
+    # Server-side only, never serialised: set when a line resolved billable but
+    # the employee has no order line on the project (decision 0012).
+    billing_warning: str | None = None
+
+
+@dataclass(frozen=True)
+class _ExistingLine:
+    employee_id: int
+    date: date_type
+    project_id: int
+    task_id: int | None
+    so_line_id: int | None
+    overridden: bool
 
 
 class EntryService:
@@ -73,7 +99,7 @@ class EntryService:
         self,
         odoo: OdooClient,
         profile: OdooProfile,
-        assignments: AssignmentService,
+        catalog: CatalogService,
         periods: PeriodService,
         outbox: OutboxService,
         internal_project_id: int,
@@ -81,7 +107,7 @@ class EntryService:
     ) -> None:
         self._odoo = odoo
         self._profile = profile
-        self._assignments = assignments
+        self._catalog = catalog
         self._periods = periods
         self._outbox = outbox
         self._internal_project_id = internal_project_id
@@ -93,7 +119,7 @@ class EntryService:
         self._day_lines: LastKnownCache[list[tuple[int, Decimal]]] = LastKnownCache(ttl=0)
 
     async def create_entry(
-        self, *, employee_id: int, assignment_id: str, date: str, hours: float, note: str
+        self, *, employee_id: int, project_id: int, task_id: int | None, date: str, hours: float, note: str
     ) -> CreatedEntry:
         # Convert at the boundary: domain rules work in Decimal/date, the
         # rest of this service and the API layer stay in the JSON-native
@@ -102,30 +128,25 @@ class EntryService:
         hours_decimal = Decimal(str(hours))
         validate_increment(hours_decimal)
 
-        assignment = await self._find_assignment(employee_id, assignment_id)
+        snapshot = await self._catalog.snapshot(employee_id, fresh=True)
+        task = await self._check_project_and_task(snapshot, project_id, task_id)
 
         entry_date = date_type.fromisoformat(date)
-        start = date_type.fromisoformat(assignment.start_date) if assignment.start_date else None
-        end = date_type.fromisoformat(assignment.end_date) if assignment.end_date else None
-        validate_within_assignment(entry_date, start, end)
-
         await self._periods.guard(employee_id, entry_date)
 
         existing_hours = await self._existing_hours(employee_id, entry_date)
         validate_daily_cap(existing_hours, hours_decimal, self._daily_hour_cap)
 
-        # Paid gets the real sale order line; unpaid and internal both
-        # write so_line=False explicitly — the unpaid_recipe confirmed in
-        # Phase 0 (odoo_profile.json: "create() with so_line=False passed
-        # explicitly").
-        so_line_id = assignment.so_line_id if assignment.kind == "paid" else None
+        # Unbillable lines get so_line=False written explicitly — the
+        # unpaid_recipe, re-proven with a task set in step 2b.3.
+        so_line_id, warning = snapshot.billing[(project_id, task)]
 
         result = await self._outbox.enqueue_create(
             employee_id=employee_id,
             entry_date=entry_date,
             hours=hours_decimal,
-            assignment_id=assignment_id,
-            project_id=assignment.project_id,
+            project_id=project_id,
+            task_id=task,
             so_line_id=so_line_id,
             note=note,
         )
@@ -135,46 +156,60 @@ class EntryService:
 
         if result.state is OutboxState.SYNCED:
             assert result.odoo_line_id is not None
-            entry = await self._read_back(result.odoo_line_id, outbox_id=str(result.outbox_id))
+            entry = await self._read_back(
+                employee_id, result.odoo_line_id, outbox_id=str(result.outbox_id), warning=warning
+            )
             self._remember_line(employee_id, entry_date, result.odoo_line_id, hours_decimal)
             return entry
 
         # PENDING — Odoo unavailable or the outcome was uncertain. Nothing
         # exists to read back; report what we know, honestly unsynced.
-        return CreatedEntry(
-            id=None,
-            outbox_id=str(result.outbox_id),
-            assignment_id=assignment_id,
-            date=date,
-            hours=hours,
-            note=note,
-            project_id=assignment.project_id,
-            so_line_id=so_line_id,
-            sync_state="pending",
-        )
+        return self._pending_entry(
+            snapshot, outbox_id=str(result.outbox_id), line_id=None, project_id=project_id, task_id=task,
+            date=date, hours=hours, note=note, warning=warning,
+        )  # fmt: skip
 
     async def update_entry(
-        self, *, employee_id: int, odoo_line_id: int, assignment_id: str, date: str, hours: float, note: str
+        self,
+        *,
+        employee_id: int,
+        odoo_line_id: int,
+        project_id: int,
+        task_id: int | None,
+        date: str,
+        hours: float,
+        note: str,
     ) -> CreatedEntry:
-        existing_employee_id, existing_date = await self._read_existing_line(odoo_line_id)
-        if existing_employee_id != employee_id:
+        existing = await self._read_existing_line(odoo_line_id)
+        if existing.employee_id != employee_id:
             raise EntryNotOwned(f"employee {employee_id} does not own line {odoo_line_id}")
 
         hours_decimal = Decimal(str(hours))
         validate_increment(hours_decimal)
 
-        assignment = await self._find_assignment(employee_id, assignment_id)
+        snapshot = await self._catalog.snapshot(employee_id, fresh=True)
+        if task_id is None:
+            raise TaskRequired("choose a task for this entry")
+
+        moved = (project_id, task_id) != (existing.project_id, existing.task_id)
+        if moved:
+            # An approver's override is a decision about this line's work.
+            if existing.overridden:
+                raise BillingSetByApprover(
+                    "the approver has set how this line is billed; ask them to move it to another task"
+                )
+            await self._check_project_and_task(snapshot, project_id, task_id)
+        # An unmoved line stays editable (hours, date, note) even if its task
+        # has since closed or the project left the employee's list: closing a
+        # task must not stop someone correcting an old line in an open month.
 
         entry_date = date_type.fromisoformat(date)
-        start = date_type.fromisoformat(assignment.start_date) if assignment.start_date else None
-        end = date_type.fromisoformat(assignment.end_date) if assignment.end_date else None
-        validate_within_assignment(entry_date, start, end)
 
         # Both ends of a move matter: the line's current date (can't touch
         # a locked entry at all) and the new date (can't move it somewhere
         # locked either).
-        await self._periods.guard(employee_id, existing_date)
-        if entry_date != existing_date:
+        await self._periods.guard(employee_id, existing.date)
+        if entry_date != existing.date:
             await self._periods.guard(employee_id, entry_date)
 
         # Exclude this line's own current hours from "existing" — we're
@@ -182,16 +217,19 @@ class EntryService:
         existing_hours = await self._existing_hours(employee_id, entry_date, exclude_odoo_line_id=odoo_line_id)
         validate_daily_cap(existing_hours, hours_decimal, self._daily_hour_cap)
 
-        so_line_id = assignment.so_line_id if assignment.kind == "paid" else None
+        # Billing is re-resolved only when project or task changed, and never
+        # over an override (refused above). Otherwise Odoo's own value stands.
+        so_line_id, warning = snapshot.billing[(project_id, task_id)] if moved else (None, None)
 
         result = await self._outbox.enqueue_update(
             employee_id=employee_id,
             odoo_line_id=odoo_line_id,
             entry_date=entry_date,
             hours=hours_decimal,
-            assignment_id=assignment_id,
-            project_id=assignment.project_id,
+            project_id=project_id,
+            task_id=task_id,
             so_line_id=so_line_id,
+            write_billing=moved,
             note=note,
         )
 
@@ -199,39 +237,32 @@ class EntryService:
             raise _failure_for(result.last_error)
 
         if result.state is OutboxState.SYNCED:
-            self._forget_line(employee_id, existing_date, odoo_line_id)
+            self._forget_line(employee_id, existing.date, odoo_line_id)
             self._remember_line(employee_id, entry_date, odoo_line_id, hours_decimal)
-            return await self._read_back(odoo_line_id, outbox_id=str(result.outbox_id))
+            return await self._read_back(employee_id, odoo_line_id, outbox_id=str(result.outbox_id), warning=warning)
 
-        return CreatedEntry(
-            id=odoo_line_id,
-            outbox_id=str(result.outbox_id),
-            assignment_id=assignment_id,
-            date=date,
-            hours=hours,
-            note=note,
-            project_id=assignment.project_id,
-            so_line_id=so_line_id,
-            sync_state="pending",
-        )
+        return self._pending_entry(
+            snapshot, outbox_id=str(result.outbox_id), line_id=odoo_line_id, project_id=project_id, task_id=task_id,
+            date=date, hours=hours, note=note, warning=warning,
+        )  # fmt: skip
 
     async def delete_entry(self, *, employee_id: int, odoo_line_id: int) -> str:
         """Returns the resulting sync_state ("synced" or "pending")."""
-        existing_employee_id, existing_date = await self._read_existing_line(odoo_line_id)
-        if existing_employee_id != employee_id:
+        existing = await self._read_existing_line(odoo_line_id)
+        if existing.employee_id != employee_id:
             raise EntryNotOwned(f"employee {employee_id} does not own line {odoo_line_id}")
 
-        await self._periods.guard(employee_id, existing_date)
+        await self._periods.guard(employee_id, existing.date)
 
         result = await self._outbox.enqueue_delete(
-            employee_id=employee_id, odoo_line_id=odoo_line_id, entry_date=existing_date
+            employee_id=employee_id, odoo_line_id=odoo_line_id, entry_date=existing.date
         )
 
         if result.state is OutboxState.FAILED:
             raise _failure_for(result.last_error)
 
         if result.state is OutboxState.SYNCED:
-            self._forget_line(employee_id, existing_date, odoo_line_id)
+            self._forget_line(employee_id, existing.date, odoo_line_id)
             return "synced"
         return "pending"
 
@@ -240,7 +271,8 @@ class EntryService:
         *,
         employee_id: int,
         month: str | None,
-        assignment_id: str | None,
+        project_id: int | None,
+        task_id: int | None,
         q: str | None,
         limit: int,
         offset: int,
@@ -263,10 +295,10 @@ class EntryService:
             end_date = date_type(year, month_num, calendar.monthrange(year, month_num)[1])
             domain += [("date", ">=", start_date.isoformat()), ("date", "<=", end_date.isoformat())]
 
-        if assignment_id is not None:
-            assignment = await self._find_assignment(employee_id, assignment_id)
-            so_line_filter = assignment.so_line_id if assignment.kind == "paid" else False
-            domain += [("project_id", "=", assignment.project_id), ("so_line", "=", so_line_filter)]
+        if project_id is not None:
+            domain.append(("project_id", "=", project_id))
+        if task_id is not None:
+            domain.append(("task_id", "=", task_id))
 
         if q:
             domain.append(("name", "ilike", q))
@@ -277,13 +309,14 @@ class EntryService:
             "search_read",
             [domain],
             {
-                "fields": ["date", "unit_amount", "name", "project_id", "so_line", self._profile.app_entry_id_field],
+                "fields": self._line_fields(),
                 "order": "date desc, id desc",
                 "limit": limit,
                 "offset": offset,
             },
         )
-        return [self._to_entry(r) for r in records], total
+        snapshot = await self._snapshot_or_none(employee_id)
+        return [self._to_entry(r, snapshot) for r in records], total
 
     async def list_for_employee_month(self, employee_id: int, year: int, month: int) -> list[CreatedEntry]:
         start_date = date_type(year, month, 1)
@@ -299,9 +332,10 @@ class EntryService:
                     ("date", "<=", end_date.isoformat()),
                 ]
             ],
-            {"fields": ["date", "unit_amount", "name", "project_id", "so_line", self._profile.app_entry_id_field]},
+            {"fields": self._line_fields()},
         )
-        by_odoo_id: dict[int, CreatedEntry] = {r["id"]: self._to_entry(r) for r in records}
+        snapshot = await self._snapshot_or_none(employee_id)
+        by_odoo_id: dict[int, CreatedEntry] = {r["id"]: self._to_entry(r, snapshot) for r in records}
 
         # A month load is the freshest view of every day in it — including days
         # with no lines, which is knowledge too (0 h).
@@ -316,11 +350,11 @@ class EntryService:
         pending_creates: list[CreatedEntry] = []
         for row in await self._outbox.rows_for_month(employee_id, start_date, end_date):
             if row.op == OutboxOp.CREATE.value:
-                pending_creates.append(self._entry_from_outbox_row(row, sync_state=row.state))
+                pending_creates.append(self._entry_from_outbox_row(row, snapshot, sync_state=row.state))
             elif row.op == OutboxOp.UPDATE.value and row.state == OutboxState.PENDING.value:
                 if row.odoo_line_id in by_odoo_id:
                     by_odoo_id[row.odoo_line_id] = self._entry_from_outbox_row(
-                        row, sync_state="pending", odoo_line_id=row.odoo_line_id
+                        row, snapshot, sync_state="pending", odoo_line_id=row.odoo_line_id
                     )
             elif row.op == OutboxOp.DELETE.value and row.state == OutboxState.PENDING.value:
                 by_odoo_id.pop(row.odoo_line_id, None)
@@ -370,69 +404,147 @@ class EntryService:
         if lines is not None:
             self._day_lines.put((employee_id, day), [(i, h) for i, h in lines if i != line_id])
 
-    def _entry_from_outbox_row(
-        self, row: OutboxRow, *, sync_state: str, odoo_line_id: int | None = None
+    def _line_fields(self) -> list[str]:
+        return ["date", "unit_amount", "name", "project_id", "task_id", self._profile.app_entry_id_field]
+
+    async def _snapshot_or_none(self, employee_id: int) -> Snapshot | None:
+        """Labels are a courtesy: a listing must not fail because the catalog
+        could not be read, so fall back to Odoo's own names."""
+        try:
+            return await self._catalog.snapshot(employee_id)
+        except OdooUnavailable, OdooUncertain:
+            return None
+
+    @staticmethod
+    def _labels(snapshot: Snapshot | None, project_id: int, task_id: int | None, odoo_names: tuple[str, str | None]):
+        project_label, task_name = odoo_names
+        if snapshot is not None:
+            project = next((p for p in snapshot.projects if p.id == project_id), None)
+            if project is not None:
+                project_label = project.label
+                task = next((t for t in project.tasks if t.id == task_id), None)
+                if task is not None:
+                    task_name = task.name
+        return project_label, task_name
+
+    def _pending_entry(
+        self,
+        snapshot: Snapshot,
+        *,
+        outbox_id: str,
+        line_id: int | None,
+        project_id: int,
+        task_id: int | None,
+        date: str,
+        hours: float,
+        note: str,
+        warning: str | None,
     ) -> CreatedEntry:
+        project_label, task_name = self._labels(snapshot, project_id, task_id, (f"project {project_id}", None))
+        return CreatedEntry(
+            id=line_id,
+            outbox_id=outbox_id,
+            project_id=project_id,
+            project_label=project_label,
+            task_id=task_id,
+            task_name=task_name,
+            date=date,
+            hours=hours,
+            note=note,
+            sync_state="pending",
+            billing_warning=warning,
+        )
+
+    def _entry_from_outbox_row(
+        self, row: OutboxRow, snapshot: Snapshot | None, *, sync_state: str, odoo_line_id: int | None = None
+    ) -> CreatedEntry:
+        project_label, task_name = self._labels(
+            snapshot, row.project_id, row.task_id, (f"project {row.project_id}", None)
+        )
         return CreatedEntry(
             id=odoo_line_id,
             outbox_id=str(row.id),
-            assignment_id=row.assignment or "",
+            project_id=row.project_id,
+            project_label=project_label,
+            task_id=row.task_id,
+            task_name=task_name,
             date=row.entry_date.isoformat(),
             hours=float(row.hours) if row.hours is not None else 0.0,
             note=row.note or "",
-            project_id=row.project_id,
-            so_line_id=row.so_line_id,
             sync_state=sync_state,
         )
 
-    def _to_entry(self, record: dict, *, outbox_id: str | None = None) -> CreatedEntry:
-        project_id = record["project_id"][0]
-        so_line_id = record["so_line"][0] if record["so_line"] else None
-        if so_line_id is not None:
-            assignment_id = f"project:{project_id}:paid"
-        elif project_id == self._internal_project_id:
-            assignment_id = "internal"
-        else:
-            assignment_id = f"project:{project_id}:unpaid"
-
+    def _to_entry(
+        self, record: dict, snapshot: Snapshot | None, *, outbox_id: str | None = None, warning: str | None = None
+    ) -> CreatedEntry:
+        project_id, odoo_project_name = record["project_id"]
+        task_id, odoo_task_name = record["task_id"] if record["task_id"] else (None, None)
+        project_label, task_name = self._labels(snapshot, project_id, task_id, (odoo_project_name, odoo_task_name))
         resolved_outbox_id = outbox_id or (record.get(self._profile.app_entry_id_field) or None)
 
         return CreatedEntry(
             id=record["id"],
             outbox_id=resolved_outbox_id,
-            assignment_id=assignment_id,
+            project_id=project_id,
+            project_label=project_label,
+            task_id=task_id,
+            task_name=task_name,
             date=record["date"],
             hours=record["unit_amount"],
             note=record["name"],
-            project_id=project_id,
-            so_line_id=so_line_id,
             sync_state="synced",
+            billing_warning=warning,
         )
 
-    async def _find_assignment(self, employee_id: int, assignment_id: str):
-        assignments = await self._assignments.list_for_employee(employee_id)
-        for a in assignments:
-            if a.id == assignment_id:
-                return a
-        raise AssignmentNotHeld(f"employee {employee_id} does not hold assignment {assignment_id!r}")
+    async def _check_project_and_task(self, snapshot: Snapshot, project_id: int, task_id: int | None) -> int:
+        """Project held, task given, in the project, open. Returns the task id."""
+        project = next((p for p in snapshot.projects if p.id == project_id), None)
+        if project is None:
+            raise ProjectNotHeld(f"you are not assigned to project {project_id}")
+        if task_id is None:
+            raise TaskRequired("choose a task for this entry")
+        if any(t.id == task_id for t in project.tasks):
+            return task_id
 
-    async def _read_existing_line(self, odoo_line_id: int) -> tuple[int, date_type]:
+        # Not on the project's open list: say why, rather than a bare refusal.
+        try:
+            records = await self._odoo.execute_kw(
+                "project.task",
+                "search_read",
+                [[("id", "=", task_id), ("active", "in", [True, False])]],
+                {"fields": ["project_id"]},
+            )
+        except OdooUnavailable, OdooUncertain:
+            records = []
+        if records and records[0]["project_id"] and records[0]["project_id"][0] != project_id:
+            raise TaskNotInProject(f"task {task_id} does not belong to project {project_id}")
+        raise TaskNotOpen(f"task {task_id} is closed or archived and cannot be logged against")
+
+    async def _read_existing_line(self, odoo_line_id: int) -> _ExistingLine:
+        marker = self._profile.so_line_manual_marker_field
         records = await self._odoo.execute_kw(
-            "account.analytic.line", "read", [[odoo_line_id]], {"fields": ["employee_id", "date"]}
+            "account.analytic.line",
+            "read",
+            [[odoo_line_id]],
+            {"fields": ["employee_id", "date", "project_id", "task_id", "so_line", marker]},
         )
         if not records:
             raise EntryNotOwned(f"line {odoo_line_id} does not exist")
-        record = records[0]
-        return record["employee_id"][0], date_type.fromisoformat(record["date"])
-
-    async def _read_back(self, line_id: int, *, outbox_id: str | None = None) -> CreatedEntry:
-        # assignment_id isn't stored on the line — reconstruct it from
-        # so_line/project_id the same way _to_entry does for a listing.
-        # These always agree: it's the same identity scheme we just wrote.
-        [record] = await self._odoo.execute_kw(
-            "account.analytic.line",
-            "read",
-            [[line_id]],
-            {"fields": ["date", "unit_amount", "name", "project_id", "so_line", self._profile.app_entry_id_field]},
+        r = records[0]
+        return _ExistingLine(
+            employee_id=r["employee_id"][0],
+            date=date_type.fromisoformat(r["date"]),
+            project_id=r["project_id"][0],
+            task_id=r["task_id"][0] if r["task_id"] else None,
+            so_line_id=r["so_line"][0] if r["so_line"] else None,
+            overridden=bool(r[marker]),
         )
-        return self._to_entry(record, outbox_id=outbox_id)
+
+    async def _read_back(
+        self, employee_id: int, line_id: int, *, outbox_id: str | None = None, warning: str | None = None
+    ) -> CreatedEntry:
+        [record] = await self._odoo.execute_kw(
+            "account.analytic.line", "read", [[line_id]], {"fields": self._line_fields()}
+        )
+        snapshot = await self._snapshot_or_none(employee_id)
+        return self._to_entry(record, snapshot, outbox_id=outbox_id, warning=warning)

@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
+from tti.audit.service import BILLING_WARNING_ACTION
 from tti.audit.service import record as record_audit
 from tti.entries.service import CreatedEntry
 from tti.errors import AppError
@@ -17,23 +18,30 @@ router = APIRouter()
 
 
 class CreateEntryRequest(BaseModel):
-    assignment_id: str
+    project_id: int
+    # Optional in the schema so a missing task is the app's own `task_required`
+    # (with a sentence the UI can show), not a generic validation error.
+    task_id: int | None = None
     date: str
     hours: float
     note: str = ""
 
 
 class UpdateEntryRequest(BaseModel):
-    assignment_id: str
+    project_id: int
+    task_id: int | None = None
     date: str
     hours: float
     note: str = ""
 
 
 _ERROR_STATUS = {
-    "assignment_not_held": 403,
+    "project_not_held": 403,
+    "task_required": 400,
+    "task_not_in_project": 400,
+    "task_not_open": 400,
+    "billing_set_by_approver": 409,
     "invalid_increment": 400,
-    "assignment_not_valid_on_date": 400,
     "period_locked": 409,
     "odoo_rejected": 422,
     "daily_cap_exceeded": 400,
@@ -45,12 +53,13 @@ def _serialize(entry: CreatedEntry) -> dict[str, object]:
     return {
         "id": entry.id,
         "outbox_id": entry.outbox_id,
-        "assignment_id": entry.assignment_id,
+        "project_id": entry.project_id,
+        "project_label": entry.project_label,
+        "task_id": entry.task_id,
+        "task_name": entry.task_name,
         "date": entry.date,
         "hours": entry.hours,
         "note": entry.note,
-        "project_id": entry.project_id,
-        "so_line_id": entry.so_line_id,
         "sync_state": entry.sync_state,
     }
 
@@ -80,6 +89,21 @@ async def _audited(request: Request, employee_id: int, action: str, target: str)
         )
 
 
+async def _audit_billing_warning(request: Request, employee_id: int, entry: CreatedEntry) -> None:
+    """A line that resolved billable but had no order line to bill against was
+    saved unbillable. The employee sees a normal save; the daily digest picks
+    this row up for ops and the approver (decisions 0011 and 0012)."""
+    if entry.billing_warning is None:
+        return
+    await record_audit(
+        request.app.state.app_state["session_factory"],
+        employee_id=employee_id,
+        action=BILLING_WARNING_ACTION,
+        target=entry.outbox_id,
+        outcome=entry.billing_warning,
+    )
+
+
 def _get_entry_service(request: Request):
     service = request.app.state.app_state["entry_service"]
     if service is None:
@@ -96,7 +120,8 @@ async def create_entry(request: Request, body: CreateEntryRequest) -> JSONRespon
         async with _audited(request, session.employee_id, "entry.create", "new") as audit:
             entry = await service.create_entry(
                 employee_id=session.employee_id,
-                assignment_id=body.assignment_id,
+                project_id=body.project_id,
+                task_id=body.task_id,
                 date=body.date,
                 hours=body.hours,
                 note=body.note,
@@ -105,6 +130,8 @@ async def create_entry(request: Request, body: CreateEntryRequest) -> JSONRespon
     except AppError as exc:
         status = _ERROR_STATUS.get(exc.code, 400)
         raise HTTPException(status_code=status, detail={"error": exc.code, "message": str(exc)}) from exc
+
+    await _audit_billing_warning(request, session.employee_id, entry)
 
     # 201 synced, 202 pending — Appendix B. A pending write isn't a
     # rejection, it's the outbox's whole reason to exist: the request
@@ -124,7 +151,8 @@ async def update_entry(request: Request, entry_id: int, body: UpdateEntryRequest
             entry = await service.update_entry(
                 employee_id=session.employee_id,
                 odoo_line_id=entry_id,
-                assignment_id=body.assignment_id,
+                project_id=body.project_id,
+                task_id=body.task_id,
                 date=body.date,
                 hours=body.hours,
                 note=body.note,
@@ -133,6 +161,8 @@ async def update_entry(request: Request, entry_id: int, body: UpdateEntryRequest
     except AppError as exc:
         status = _ERROR_STATUS.get(exc.code, 400)
         raise HTTPException(status_code=status, detail={"error": exc.code, "message": str(exc)}) from exc
+
+    await _audit_billing_warning(request, session.employee_id, entry)
 
     status_code = 200 if entry.sync_state == "synced" else 202
     return JSONResponse(status_code=status_code, content=_serialize(entry))
@@ -179,7 +209,8 @@ async def list_entries(request: Request, month: str | None = None) -> list[dict[
 async def search_entries(
     request: Request,
     month: str | None = None,
-    assignment_id: str | None = None,
+    project_id: int | None = None,
+    task_id: int | None = None,
     q: str | None = None,
     limit: int = 50,
     offset: int = 0,
@@ -194,7 +225,8 @@ async def search_entries(
         entries, total = await service.search(
             employee_id=session.employee_id,
             month=month,
-            assignment_id=assignment_id,
+            project_id=project_id,
+            task_id=task_id,
             q=q,
             limit=limit,
             offset=offset,

@@ -43,9 +43,11 @@ async def _cleanup_entry(odoo_client, session_factory, entry):
             await session.commit()
 
 
-async def test_edit_changes_the_line_not_creates_a_new_one(odoo_client, entry_service, session_factory):
+async def test_edit_changes_the_line_not_creates_a_new_one(
+    odoo_client, entry_service, session_factory, internal_target
+):
     entry = await entry_service.create_entry(
-        employee_id=TM_EMPLOYEE_ID, assignment_id="internal", date=TODAY.isoformat(), hours=1.0, note="before edit"
+        employee_id=TM_EMPLOYEE_ID, **internal_target, date=TODAY.isoformat(), hours=1.0, note="before edit"
     )
     try:
         before_count = len(
@@ -60,7 +62,7 @@ async def test_edit_changes_the_line_not_creates_a_new_one(odoo_client, entry_se
         edited = await entry_service.update_entry(
             employee_id=TM_EMPLOYEE_ID,
             odoo_line_id=entry.id,
-            assignment_id="internal",
+            **internal_target,
             date=TODAY.isoformat(),
             hours=2.5,
             note="after edit",
@@ -82,9 +84,9 @@ async def test_edit_changes_the_line_not_creates_a_new_one(odoo_client, entry_se
         await _cleanup_entry(odoo_client, session_factory, entry)
 
 
-async def test_delete_removes_it(odoo_client, entry_service, session_factory):
+async def test_delete_removes_it(odoo_client, entry_service, session_factory, internal_target):
     entry = await entry_service.create_entry(
-        employee_id=TM_EMPLOYEE_ID, assignment_id="internal", date=TODAY.isoformat(), hours=1.0, note="to delete"
+        employee_id=TM_EMPLOYEE_ID, **internal_target, date=TODAY.isoformat(), hours=1.0, note="to delete"
     )
     sync_state = await entry_service.delete_entry(employee_id=TM_EMPLOYEE_ID, odoo_line_id=entry.id)
     assert sync_state == "synced"
@@ -101,16 +103,16 @@ async def test_delete_removes_it(odoo_client, entry_service, session_factory):
         await session.commit()
 
 
-async def test_editing_another_employees_line_is_refused(odoo_client, entry_service, session_factory):
+async def test_editing_another_employees_line_is_refused(odoo_client, entry_service, session_factory, internal_target):
     entry = await entry_service.create_entry(
-        employee_id=TM_EMPLOYEE_ID, assignment_id="internal", date=TODAY.isoformat(), hours=1.0, note="owned by TM"
+        employee_id=TM_EMPLOYEE_ID, **internal_target, date=TODAY.isoformat(), hours=1.0, note="owned by TM"
     )
     try:
         with pytest.raises(EntryNotOwned):
             await entry_service.update_entry(
                 employee_id=OTHER_EMPLOYEE_ID,
                 odoo_line_id=entry.id,
-                assignment_id="internal",
+                **internal_target,
                 date=TODAY.isoformat(),
                 hours=3.0,
                 note="hijacked",
@@ -128,7 +130,9 @@ async def test_editing_another_employees_line_is_refused(odoo_client, entry_serv
         await _cleanup_entry(odoo_client, session_factory, entry)
 
 
-async def test_daily_cap_counts_pending_rows(odoo_client, entry_service, period_service, profile, session_factory):
+async def test_daily_cap_counts_pending_rows(
+    odoo_client, entry_service, period_service, profile, session_factory, internal_target
+):
     port = _unused_port()
     unreachable_client = OdooClient(url=f"http://127.0.0.1:{port}", db="x", user="x", api_key="x", timeout=3.0)
     try:
@@ -137,8 +141,8 @@ async def test_daily_cap_counts_pending_rows(odoo_client, entry_service, period_
             employee_id=TM_EMPLOYEE_ID,
             entry_date=TODAY,
             hours=Decimal("9.0"),
-            assignment_id="internal",
-            project_id=1,
+            project_id=internal_target["project_id"],
+            task_id=internal_target["task_id"],
             so_line_id=None,
             note="cap test: pending 9h",
         )
@@ -148,7 +152,7 @@ async def test_daily_cap_counts_pending_rows(odoo_client, entry_service, period_
             with pytest.raises(DailyCapExceeded):
                 await entry_service.create_entry(
                     employee_id=TM_EMPLOYEE_ID,
-                    assignment_id="internal",
+                    **internal_target,
                     date=TODAY.isoformat(),
                     hours=2.0,
                     note="cap test: should be refused",
@@ -180,13 +184,15 @@ async def validated_through_prev_month(odoo_client):
         )
 
 
-async def test_locked_period_refuses_all_three_operations(odoo_client, entry_service, validated_through_prev_month):
+async def test_locked_period_refuses_all_three_operations(
+    odoo_client, entry_service, validated_through_prev_month, internal_target
+):
     locked_date = validated_through_prev_month
 
     with pytest.raises(PeriodLocked):
         await entry_service.create_entry(
             employee_id=TM_EMPLOYEE_ID,
-            assignment_id="internal",
+            **internal_target,
             date=locked_date.isoformat(),
             hours=1.0,
             note="should be locked",
@@ -201,7 +207,7 @@ async def test_locked_period_refuses_all_three_operations(odoo_client, entry_ser
         [
             {
                 "employee_id": TM_EMPLOYEE_ID,
-                "project_id": 1,
+                "project_id": internal_target["project_id"],
                 "date": locked_date.isoformat(),
                 "unit_amount": 1.0,
                 "name": "pre-existing, now locked",
@@ -213,7 +219,7 @@ async def test_locked_period_refuses_all_three_operations(odoo_client, entry_ser
             await entry_service.update_entry(
                 employee_id=TM_EMPLOYEE_ID,
                 odoo_line_id=line_id,
-                assignment_id="internal",
+                **internal_target,
                 date=locked_date.isoformat(),
                 hours=2.0,
                 note="edit should be locked",
@@ -230,12 +236,14 @@ async def test_locked_period_refuses_all_three_operations(odoo_client, entry_ser
         await odoo_client.execute_kw("account.analytic.line", "unlink", [[line_id]])
 
 
-async def test_month_view_matches_odoo_exactly_once_queue_is_empty(odoo_client, entry_service, session_factory):
+async def test_month_view_matches_odoo_exactly_once_queue_is_empty(
+    odoo_client, entry_service, session_factory, internal_target
+):
     entries = []
     for i, hours in enumerate([1.0, 1.5]):
         entry = await entry_service.create_entry(
             employee_id=TM_EMPLOYEE_ID,
-            assignment_id="internal",
+            **internal_target,
             date=TODAY.isoformat(),
             hours=hours,
             note=f"month view test {i}",

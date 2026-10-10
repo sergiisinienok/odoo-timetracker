@@ -35,7 +35,14 @@ async def main() -> None:
     try:
         await asyncio.gather(
             run_worker_loop(session_factory, odoo, profile, periods),
-            run_digest_loop(session_factory, odoo, settings.ops_digest_to, settings.digest_hour_utc),
+            run_digest_loop(
+                session_factory,
+                odoo,
+                settings.ops_digest_to,
+                settings.digest_hour_utc,
+                profile,
+                settings.internal_project_id,
+            ),
         )
     finally:
         await odoo.aclose()

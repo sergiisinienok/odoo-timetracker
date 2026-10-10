@@ -10,9 +10,5 @@ class InvalidIncrement(AppError):
     code = "invalid_increment"
 
 
-class AssignmentNotValidOnDate(AppError):
-    code = "assignment_not_valid_on_date"
-
-
 class DailyCapExceeded(AppError):
     code = "daily_cap_exceeded"

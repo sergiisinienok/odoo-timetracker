@@ -29,7 +29,7 @@ sandbox first — every script already exists in tools/, this is
 re-running them, not rebuilding them.
 
 Next: Phase 2b — Tasks and billability (inserted before the pilot, decision
-0011). 2b.1 (decision record and brief v8), 2b.3 (task probe) and 2b.4 (sample tasks), 2b.5 (billing rule) and 2b.6 (catalog) are done;
+0011). 2b.1 (decision record and brief v8), 2b.3 (task probe) and 2b.4 (sample tasks), 2b.5 (billing rule), 2b.6 (catalog) and 2b.7 (entries carry a task) are done;
 2b.2 (re-running the Phase 0 probe suite against the real
 `particlesg.odoo.com` sandbox) is **deliberately deferred** — the owner chose
 to build 2b against the trial's `.env`, so 2b.3's facts, including the Studio
@@ -39,8 +39,8 @@ re-confirmed on particlesg (decision 0013) before the pilot.
 ### Current status
 
 - Phase: 2b — Tasks and billability (Phase 2 gate passed)
-- Last completed step: 2b.6 — `GET /api/catalog` (trial only; 2b.2 skipped for now; `INTERNAL_PROJECT_ID=33` in the local `.env`, not 1)
-- Next step: 2b.7 — entries carry a task (retires `AssignmentService`; rework the 9 `tests/odoo` failures the 2b.4 setup caused)
+- Last completed step: 2b.7 — entries carry a task (trial only; 2b.2 skipped for now; `INTERNAL_PROJECT_ID=33` in the local `.env`, not 1)
+- Next step: 2b.8 — UI. **The web app is broken until then**: it still calls `/api/assignments` (removed) and sends `assignment_id`
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
 
@@ -192,6 +192,15 @@ they don't get rediscovered every session.
   unauthenticated `version` call. After rotating `ODOO_KEY`, confirm the
   containers hold the new one (hash compare, `docs/key-rotation.md` step 4)
   and make an authenticated call; don't trust readiness alone.
+- **Phase 2b test fixtures create their own tasks** (`make_task`, `internal_target`,
+  `temp_records` in `api/tests/odoo/conftest.py`) and remove them, so tests do
+  not depend on what ops named theirs. Teardown order matters: Odoo refuses to
+  delete a task that a line still references, so anything that creates lines
+  must tear down *before* the tasks it uses (depend on `temp_records`, or create
+  the task first). The sandbox is shared: tests pick days with room under the
+  daily cap instead of fixed dates.
+- **`is_so_line_edited` is set by the Odoo UI, not by RPC `write()`/`web_save()`**
+  (0013). Tests that need an approver override set the marker explicitly.
 - **Every Bash call in this repo needs `unset POSTGRES_PASSWORD DATABASE_URL`
   before `docker compose`** — each call is a fresh shell, and the `dotenv`
   plugin re-exports the stale empty values every time.

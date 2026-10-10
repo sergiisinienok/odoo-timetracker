@@ -44,3 +44,19 @@ def test_seconds_until_rolls_to_tomorrow_once_hour_passed():
 
     assert seconds_until(datetime(2026, 9, 24, 6, 0, tzinfo=UTC), 7) == 3600
     assert seconds_until(datetime(2026, 9, 24, 7, 0, tzinfo=UTC), 7) == 86400
+
+
+def test_digest_lists_billing_warnings_and_empty_projects():
+    from datetime import datetime
+
+    from tti.ops.digest import BillingWarningItem
+
+    d = Digest(
+        billing_warnings=[BillingWarningItem("Ann", 2, datetime(2026, 10, 9, 14, 30, tzinfo=UTC))],
+        projects_without_tasks=["Acme — Phase 2"],
+    )
+    subject, body = render(d, date(2026, 10, 10))
+    assert "2 item(s)" in subject and not d.is_empty
+    assert "Ann" in body and "2 line(s)" in body and "Sales Order Item" in body
+    assert "Acme — Phase 2" in body
+    assert not any(w in body.lower() for w in ("price", "amount", "currency"))

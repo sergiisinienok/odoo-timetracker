@@ -8,7 +8,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tti.assignments.service import AssignmentService
 from tti.auth.employees import EmployeeResolver
 from tti.catalog.service import CatalogService
 from tti.config import OdooProfile, Settings
@@ -20,7 +19,6 @@ from tti.odoo.errors import OdooError, OdooRejected
 from tti.ops.readiness import check_readiness
 from tti.outbox.service import OutboxService
 from tti.periods.service import PeriodService
-from tti.routes.assignments import router as assignments_router
 from tti.routes.auth import router as auth_router
 from tti.routes.catalog import router as catalog_router
 from tti.routes.entries import router as entries_router
@@ -36,7 +34,6 @@ class AppState(TypedDict):
     odoo: OdooClient
     session_factory: async_sessionmaker[AsyncSession]
     employee_resolver: EmployeeResolver
-    assignment_service: AssignmentService | None
     catalog_service: CatalogService | None
     period_service: PeriodService | None
     outbox_service: OutboxService | None
@@ -62,7 +59,6 @@ async def lifespan(app: FastAPI):
         logger.warning("odoo authentication failed at startup", exc_info=True)
 
     employee_resolver = EmployeeResolver(odoo)
-    assignment_service = AssignmentService(odoo, profile, settings.internal_project_id) if profile is not None else None
     catalog_service = CatalogService(odoo, profile, settings.internal_project_id) if profile is not None else None
     period_service = PeriodService(odoo, profile) if profile is not None else None
     session_factory = make_session_factory(settings.database_url)
@@ -75,14 +71,14 @@ async def lifespan(app: FastAPI):
         EntryService(
             odoo,
             profile,
-            assignment_service,
+            catalog_service,
             period_service,
             outbox_service,
             settings.internal_project_id,
             settings.daily_hour_cap,
         )
         if profile is not None
-        and assignment_service is not None
+        and catalog_service is not None
         and period_service is not None
         and outbox_service is not None
         else None
@@ -94,7 +90,6 @@ async def lifespan(app: FastAPI):
         odoo=odoo,
         session_factory=session_factory,
         employee_resolver=employee_resolver,
-        assignment_service=assignment_service,
         catalog_service=catalog_service,
         period_service=period_service,
         outbox_service=outbox_service,
@@ -109,7 +104,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Odoo Time Tracker API", lifespan=lifespan)
 install_security(app)
 app.include_router(auth_router)
-app.include_router(assignments_router)
 app.include_router(catalog_router)
 app.include_router(periods_router)
 app.include_router(entries_router)
@@ -121,7 +115,7 @@ async def odoo_error_handler(request: Request, exc: OdooError) -> JSONResponse:
     # goes through the outbox (OdooUnavailable/Uncertain there means 202
     # pending, never an uncaught exception). This catches OdooError from
     # the *reads* every route needs before or instead of a write —
-    # assignments, periods, the pre-write assignment/period-lock checks in
+    # the catalog, periods, the pre-write project/task/period-lock checks in
     # entries/service.py — none of which have anywhere else to queue to;
     # there's nothing to enqueue if we can't even read what to write.
     logger.warning("unhandled OdooError reached the route layer", exc_info=exc)

@@ -78,7 +78,7 @@ async def test_session_cookie_flags(client, monkeypatch):
 async def test_another_employees_entry_is_refused_and_audited(client, session_cookie, session_factory):
     for method, path, body in (
         ("DELETE", "/entries/555", None),
-        ("PATCH", "/entries/555", {"assignment_id": "a", "date": "2026-09-01", "hours": 1, "note": ""}),
+        ("PATCH", "/entries/555", {"project_id": 1, "task_id": 2, "date": "2026-09-01", "hours": 1, "note": ""}),
     ):
         r = await client.request(method, path, json=body, cookies=session_cookie, headers={"Origin": BASE_URL})
         assert r.status_code == 403, (method, r.text)

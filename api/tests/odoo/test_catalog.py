@@ -17,22 +17,6 @@ OTHER_PROJECT_ID = 28
 FAR_FUTURE = "2099-06-"  # lines dated here are always the employee's most recent
 
 
-@pytest.fixture
-async def temp_records(odoo_client):
-    """Create tasks/lines through `make`, remove them all afterwards."""
-    created: list[tuple[str, int]] = []
-
-    async def make(model, vals):
-        rid = await odoo_client.execute_kw(model, "create", [vals])
-        rid = rid[0] if isinstance(rid, list) else rid
-        created.append((model, rid))
-        return rid
-
-    yield make
-    for model, rid in reversed(created):
-        await odoo_client.execute_kw(model, "unlink", [[rid]])
-
-
 async def _task(temp_records, project_id, name, **extra):
     return await temp_records("project.task", {"name": f"TEMP catalog {name}", "project_id": project_id, **extra})
 
@@ -174,11 +158,11 @@ async def test_an_outage_serves_the_last_known_catalog(odoo_client, profile):
 
     switch = SwitchableOdoo(odoo_client)
     service = CatalogService(switch, profile, Settings.from_env().internal_project_id)
-    warm = await service.list_for_employee(EMPLOYEE_ID)
+    warm = await service.snapshot(EMPLOYEE_ID)
 
     service._cache._entries[EMPLOYEE_ID] = (warm, 0.0, 0.0)  # expire freshness, keep last-known
     switch.down = True
-    assert await service.list_for_employee(EMPLOYEE_ID) == warm
+    assert await service.snapshot(EMPLOYEE_ID) == warm
 
 
 async def test_a_cold_cache_during_an_outage_refuses(odoo_client, profile):
@@ -226,3 +210,23 @@ async def test_default_project_is_flagged_and_an_unlisted_default_is_dropped(odo
         await odoo_client.execute_kw(
             "hr.employee", "write", [[EMPLOYEE_ID], {default_field: original[0] if original else False}]
         )
+
+
+async def test_a_customer_with_two_projects_gets_disambiguated_labels(odoo_client, make_catalog_service, temp_records):
+    # Employee 1 is already mapped to project 2 (S00001, customer "Alpha Inc -
+    # Test", partner 11). Add a second project under the same customer — only
+    # the label logic is under test, so reusing an order line is fine.
+    alpha_partner_id = 11
+    project_id = await temp_records("project.project", {"name": "TEMP second project for label test"})
+    # Order matters: writing partner_id *before* the mapping row exists gets
+    # silently reset to False (CLAUDE.md, step 1.4), so map first, then write it.
+    await temp_records(
+        "project.sale.line.employee.map",
+        {"project_id": project_id, "employee_id": EMPLOYEE_ID, "sale_line_id": 1},
+    )
+    await odoo_client.execute_kw("project.project", "write", [[project_id], {"partner_id": alpha_partner_id}])
+
+    catalog = _by_id(await make_catalog_service().list_for_employee(EMPLOYEE_ID))
+    alpha_labels = {pid: p.label for pid, p in catalog.items() if pid in (PROJECT_ID, project_id)}
+    assert len(alpha_labels) == 2 and len(set(alpha_labels.values())) == 2
+    assert all("Alpha Inc - Test" in label for label in alpha_labels.values())

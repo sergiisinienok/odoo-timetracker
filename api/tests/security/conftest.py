@@ -40,7 +40,16 @@ class FakeOdoo:
     async def execute_kw(self, model, method, args, kwargs=None):
         self.calls.append((model, method))
         if (model, method) == ("account.analytic.line", "read"):
-            return [{"employee_id": [OTHER, "Someone Else"], "date": "2026-09-01"}]
+            return [
+                {
+                    "employee_id": [OTHER, "Someone Else"],
+                    "date": "2026-09-01",
+                    "project_id": [2, "S00001"],
+                    "task_id": False,
+                    "so_line": False,
+                    "is_so_line_edited": False,
+                }
+            ]
         if (model, method) == ("hr.employee", "read"):
             return [{"id": ME, "name": "Test Employee"}]
         raise AssertionError(f"unexpected odoo call {model}.{method}")
@@ -86,7 +95,12 @@ def odoo() -> FakeOdoo:
 @pytest.fixture
 def client(session_factory, odoo):
     settings = _settings()
-    profile = OdooProfile(data={"app_entry_id_field": "x_studio_timetracking_app_entry_id"})
+    profile = OdooProfile(
+        data={
+            "app_entry_id_field": "x_studio_timetracking_app_entry_id",
+            "so_line_manual_marker_field": "is_so_line_edited",
+        }
+    )
     entry_service = EntryService(
         odoo, profile, MagicMock(), MagicMock(), MagicMock(), settings.internal_project_id, settings.daily_hour_cap
     )

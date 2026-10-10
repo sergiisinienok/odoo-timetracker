@@ -91,8 +91,8 @@ class OutboxService:
         employee_id: int,
         entry_date: date,
         hours: Decimal,
-        assignment_id: str,
         project_id: int,
+        task_id: int | None,
         so_line_id: int | None,
         note: str,
     ) -> EnqueueResult:
@@ -102,8 +102,8 @@ class OutboxService:
             op=OutboxOp.CREATE.value,
             entry_date=entry_date,
             hours=hours,
-            assignment=assignment_id,
             project_id=project_id,
+            task_id=task_id,
             so_line_id=so_line_id,
             note=note,
             state=OutboxState.PENDING.value,
@@ -118,9 +118,10 @@ class OutboxService:
         odoo_line_id: int,
         entry_date: date,
         hours: Decimal,
-        assignment_id: str,
         project_id: int,
+        task_id: int | None,
         so_line_id: int | None,
+        write_billing: bool,
         note: str,
     ) -> EnqueueResult:
         row = OutboxRow(
@@ -129,9 +130,10 @@ class OutboxService:
             op=OutboxOp.UPDATE.value,
             entry_date=entry_date,
             hours=hours,
-            assignment=assignment_id,
             project_id=project_id,
+            task_id=task_id,
             so_line_id=so_line_id,
+            write_billing=write_billing,
             note=note,
             odoo_line_id=odoo_line_id,
             state=OutboxState.PENDING.value,
@@ -216,7 +218,7 @@ class OutboxService:
 
 
 def _create_vals(row: OutboxRow, app_entry_id_field: str) -> dict[str, object]:
-    return {
+    vals: dict[str, object] = {
         "date": row.entry_date.isoformat(),
         "employee_id": row.employee_id,
         "project_id": row.project_id,
@@ -225,16 +227,28 @@ def _create_vals(row: OutboxRow, app_entry_id_field: str) -> dict[str, object]:
         "so_line": row.so_line_id if row.so_line_id is not None else False,
         app_entry_id_field: str(row.id),
     }
+    # Only when there is one: a pre-2b row has no task, and a task-less line
+    # must be created exactly as it always was.
+    if row.task_id is not None:
+        vals["task_id"] = row.task_id
+    return vals
 
 
 def _update_vals(row: OutboxRow) -> dict[str, object]:
-    return {
+    vals: dict[str, object] = {
         "date": row.entry_date.isoformat(),
-        "project_id": row.project_id,
         "unit_amount": float(row.hours) if row.hours is not None else None,
         "name": row.note or " ",
-        "so_line": row.so_line_id if row.so_line_id is not None else False,
     }
+    # Billing is written only when the entry service said to: never over an
+    # approver's override, and never when project and task did not change
+    # (Odoo leaves so_line alone on hours and note edits, decision 0013).
+    if row.write_billing:
+        vals["project_id"] = row.project_id
+        vals["so_line"] = row.so_line_id if row.so_line_id is not None else False
+        if row.task_id is not None:
+            vals["task_id"] = row.task_id
+    return vals
 
 
 async def _mark_pending_retry(session: AsyncSession, row: OutboxRow, exc: Exception) -> None:

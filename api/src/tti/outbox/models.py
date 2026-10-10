@@ -13,7 +13,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import CheckConstraint, DateTime, Index, Numeric, Text, func, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, Numeric, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -51,9 +51,15 @@ class OutboxRow(Base):
     op: Mapped[str] = mapped_column(Text, nullable=False)
     entry_date: Mapped[date] = mapped_column(nullable=False)
     hours: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
-    assignment: Mapped[str | None] = mapped_column(Text)
     project_id: Mapped[int | None] = mapped_column()
+    # Null for rows queued before Phase 2b (no task) and for deletes.
+    task_id: Mapped[int | None] = mapped_column()
     so_line_id: Mapped[int | None] = mapped_column()
+    # Whether an update writes project, task and so_line at all. False when
+    # the entry service decided billing must be left alone — the line carries
+    # an approver's override, or project and task did not change (decision
+    # 0011). Always true for creates and for rows queued before Phase 2b.
+    write_billing: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
     note: Mapped[str | None] = mapped_column(Text)
     odoo_line_id: Mapped[int | None] = mapped_column()
     state: Mapped[str] = mapped_column(Text, nullable=False)

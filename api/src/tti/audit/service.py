@@ -8,6 +8,10 @@ from tti.audit.models import AuditLogRow
 
 logger = logging.getLogger(__name__)
 
+# audit_log.action for a save that resolved billable with no order line to bill
+# against; `outcome` carries the warning name, `target` the outbox id.
+BILLING_WARNING_ACTION = "entry.billing_warning"
+
 
 async def record(
     session_factory: async_sessionmaker[AsyncSession],

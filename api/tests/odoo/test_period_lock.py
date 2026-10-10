@@ -37,11 +37,11 @@ async def validated_through_prev_month(odoo_client):
         )
 
 
-async def test_create_in_a_validated_month_is_refused(entry_service, validated_through_prev_month):
+async def test_create_in_a_validated_month_is_refused(entry_service, validated_through_prev_month, internal_target):
     with pytest.raises(PeriodLocked):
         await entry_service.create_entry(
             employee_id=TM_EMPLOYEE_ID,
-            assignment_id="internal",
+            **internal_target,
             date=_LAST_OF_PREV_MONTH.isoformat(),
             hours=1.0,
             note="should be refused, period locked",
@@ -49,11 +49,11 @@ async def test_create_in_a_validated_month_is_refused(entry_service, validated_t
 
 
 async def test_create_in_the_following_month_still_works(
-    odoo_client, entry_service, session_factory, validated_through_prev_month
+    odoo_client, entry_service, session_factory, validated_through_prev_month, internal_target
 ):
     entry = await entry_service.create_entry(
         employee_id=TM_EMPLOYEE_ID,
-        assignment_id="internal",
+        **internal_target,
         date=_TODAY.isoformat(),
         hours=1.0,
         note="following month, should still work",

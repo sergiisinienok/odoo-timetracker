@@ -39,7 +39,6 @@ async def _seed_retry_row(session_factory, op: str) -> uuid.UUID:
         op=op,
         entry_date=datetime.date.today(),
         hours=Decimal("1.0") if op == OutboxOp.CREATE.value else None,
-        assignment="internal" if op == OutboxOp.CREATE.value else None,
         project_id=1 if op == OutboxOp.CREATE.value else None,
         note="gap 3 reconcile test",
         odoo_line_id=None if op == OutboxOp.CREATE.value else 999999,

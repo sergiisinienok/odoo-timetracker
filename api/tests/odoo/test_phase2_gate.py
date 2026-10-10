@@ -19,6 +19,7 @@ import pytest
 from sqlalchemy import delete
 from switchable import SwitchableOdoo
 
+from tti.config import Settings
 from tti.outbox.models import OutboxRow, OutboxState
 from tti.outbox.service import OutboxService
 from tti.outbox.worker import process_one_pending_row
@@ -70,7 +71,9 @@ async def locked_prev_month(odoo_client):
 # --- 1. locking, independent of Odoo -------------------------------------------------
 
 
-async def test_app_refuses_writes_that_odoo_itself_would_accept(odoo_client, entry_service, locked_prev_month):
+async def test_app_refuses_writes_that_odoo_itself_would_accept(
+    odoo_client, entry_service, locked_prev_month, internal_target
+):
     """Odoo does not enforce the lock (validated_line_writable is true in the
     profile). So the same three writes the app refuses must succeed when made
     straight to Odoo — otherwise the refusal could be Odoo's, not the app's."""
@@ -90,11 +93,11 @@ async def test_app_refuses_writes_that_odoo_itself_would_accept(odoo_client, ent
         # The app refuses all three...
         with pytest.raises(PeriodLocked):
             await entry_service.create_entry(
-                employee_id=EMP, assignment_id="internal", date=locked_day, hours=1.0, note=f"{prefix} b"
+                employee_id=EMP, **internal_target, date=locked_day, hours=1.0, note=f"{prefix} b"
             )
         with pytest.raises(PeriodLocked):
             await entry_service.update_entry(
-                employee_id=EMP, odoo_line_id=line_id, assignment_id="internal", date=locked_day, hours=2.0, note="x"
+                employee_id=EMP, odoo_line_id=line_id, **internal_target, date=locked_day, hours=2.0, note="x"
             )
         with pytest.raises(PeriodLocked):
             await entry_service.delete_entry(employee_id=EMP, odoo_line_id=line_id)
@@ -132,8 +135,8 @@ async def test_queued_write_is_not_applied_once_its_month_is_locked(
         employee_id=EMP,
         entry_date=day,
         hours=Decimal("1.0"),
-        assignment_id="internal",
         project_id=1,
+        task_id=None,
         so_line_id=None,
         note="phase2-gate queued then locked",
     )
@@ -208,9 +211,10 @@ async def test_queued_update_and_delete_are_not_applied_once_their_month_is_lock
             odoo_line_id=line,
             entry_date=day,
             hours=Decimal("2.0"),
-            assignment_id="internal",
             project_id=1,
+            task_id=None,
             so_line_id=None,
+            write_billing=False,
             note="phase2-gate queued edit (edited)",
         )
         _, dele = await _queue_while_down(
@@ -249,8 +253,8 @@ async def test_a_create_that_reached_odoo_before_the_lock_is_still_reconciled_no
         employee_id=EMP,
         entry_date=day,
         hours=Decimal("1.0"),
-        assignment_id="internal",
         project_id=1,
+        task_id=None,
         so_line_id=None,
         note="phase2-gate reconciled before lock",
     )
@@ -294,8 +298,8 @@ async def test_lock_check_with_odoo_down_leaves_the_row_pending_not_failed(odoo_
         employee_id=EMP,
         entry_date=TODAY,
         hours=Decimal("1.0"),
-        assignment_id="internal",
         project_id=1,
+        task_id=None,
         so_line_id=None,
         note="phase2-gate check while down",
     )
@@ -313,7 +317,7 @@ async def test_lock_check_with_odoo_down_leaves_the_row_pending_not_failed(odoo_
 
 
 async def test_app_view_reconciles_with_odoo_for_a_full_month(
-    odoo_client, entry_service, assignment_service, session_factory
+    odoo_client, entry_service, session_factory, internal_target, make_task
 ):
     year, month = LAST_OF_PREV_MONTH.year, LAST_OF_PREV_MONTH.month
     last_day = calendar.monthrange(year, month)[1]
@@ -322,22 +326,51 @@ async def test_app_view_reconciles_with_odoo_for_a_full_month(
         for d in range(1, last_day + 1)
         if datetime.date(year, month, d).weekday() < 5 or d in (1, last_day)  # every working day + both month edges
     ]
-    assignments = await assignment_service.list_for_employee(EMP)
+    # Billable, flat-rate-style and internal targets, each with a real task.
+    targets = [
+        {"project_id": 2, "task_id": await make_task(2, "gate T&M", "same")},
+        {"project_id": 28, "task_id": await make_task(28, "gate flat", "same")},
+        internal_target,
+    ]
     hours_cycle = [0.5, 1.0, 1.5, 2.0, 4.0]
+    # The sandbox is shared: the month may already hold real entries, so fill
+    # each day only as far as the daily cap allows. The reconciliation below
+    # compares the whole month, existing lines included.
+    existing_rows = await odoo_client.execute_kw(
+        "account.analytic.line",
+        "search_read",
+        [
+            [
+                ("employee_id", "=", EMP),
+                ("date", ">=", f"{year}-{month:02d}-01"),
+                ("date", "<=", f"{year}-{month:02d}-{last_day:02d}"),
+            ]
+        ],
+        {"fields": ["date", "unit_amount"]},
+    )
+    used: dict[str, float] = defaultdict(float)
+    for r in existing_rows:
+        used[r["date"]] += r["unit_amount"]
+    cap = float(Settings.from_env().daily_hour_cap)
     started_at = datetime.datetime.now(datetime.UTC)
     created = []
     try:
         for i, day in enumerate(days):
-            a = assignments[i % len(assignments)]
+            target = targets[i % len(targets)]
+            room = cap - used[day.isoformat()]
+            hours = min(hours_cycle[i % len(hours_cycle)], (room // 0.25) * 0.25)  # quarter-hour steps
+            if hours < 0.5:
+                continue  # a day that is already full
             created.append(
                 await entry_service.create_entry(
                     employee_id=EMP,
-                    assignment_id=a.id,
+                    **target,
                     date=day.isoformat(),
-                    hours=hours_cycle[i % len(hours_cycle)],
+                    hours=hours,
                     note=f"phase2-gate reconcile {day.isoformat()}",
                 )
             )
+        assert len(created) >= len(days) // 2, "too few free days to make the reconciliation meaningful"
         assert all(e.sync_state == "synced" for e in created)
 
         # Exercise edit and delete too, not just create.
@@ -345,9 +378,10 @@ async def test_app_view_reconciles_with_odoo_for_a_full_month(
             await entry_service.update_entry(
                 employee_id=EMP,
                 odoo_line_id=e.id,
-                assignment_id=e.assignment_id,
+                project_id=e.project_id,
+                task_id=e.task_id,
                 date=e.date,
-                hours=1.25,
+                hours=min(1.25, e.hours),  # never up on a day that may already be nearly full
                 note=e.note + " (edited)",
             )
         for e in created[3:5]:
@@ -364,7 +398,7 @@ async def test_app_view_reconciles_with_odoo_for_a_full_month(
                     ("date", "<=", f"{year}-{month:02d}-{last_day:02d}"),
                 ]
             ],
-            {"fields": ["date", "unit_amount", "name", "project_id"]},
+            {"fields": ["date", "unit_amount", "name", "project_id", "task_id"]},
         )
 
         app_by_id = {e.id: e for e in app_view if e.id is not None}
@@ -374,11 +408,12 @@ async def test_app_view_reconciles_with_odoo_for_a_full_month(
 
         for line_id, r in odoo_by_id.items():
             e = app_by_id[line_id]
-            assert (e.date, e.hours, e.note, e.project_id) == (
+            assert (e.date, e.hours, e.note, e.project_id, e.task_id) == (
                 r["date"],
                 r["unit_amount"],
                 r["name"],
                 r["project_id"][0],
+                r["task_id"][0] if r["task_id"] else None,
             ), line_id
 
         def per_day(items):
