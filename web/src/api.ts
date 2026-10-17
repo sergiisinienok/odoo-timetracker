@@ -57,6 +57,14 @@ export function todayLocal(): string {
   return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
 }
 
+/** "YYYY-MM-DD" moved by whole calendar days; an empty or invalid date moves from today. */
+export function shiftDay(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const base = y && m && d ? new Date(y, m - 1, d) : new Date();
+  base.setDate(base.getDate() + days);
+  return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
+}
+
 /** The task to pre-fill for a project: the one last used there, if it is still open. */
 export function prefilledTask(project: CatalogProject | undefined): string {
   if (!project || project.last_used_task_id === null) return "";

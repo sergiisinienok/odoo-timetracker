@@ -104,6 +104,21 @@ test("logs an entry in under 60 seconds from a cold load", async ({ page, contex
   // line dated today for the employee, which would also have deleted real entries.)
 });
 
+test("previous and next day buttons move the date, across a month boundary too", async ({ page, context }) => {
+  await context.addCookies([
+    { name: "tti_session", value: sessionCookie(TM_EMPLOYEE_ID), url: "http://localhost", httpOnly: true, sameSite: "Lax" },
+  ]);
+  await page.goto("/");
+
+  const date = page.getByLabel("Date");
+  await date.fill("2026-03-01");
+  await page.getByRole("button", { name: "Previous day" }).click();
+  await expect(date).toHaveValue("2026-02-28");
+  await page.getByRole("button", { name: "Next day" }).click();
+  await page.getByRole("button", { name: "Next day" }).click();
+  await expect(date).toHaveValue("2026-03-02");
+});
+
 test("the daily cap is refused with a clear message", async ({ page, context }) => {
   // A pre-existing line consuming most of the day. It sits on a task, so that
   // task is also the one the form pre-fills. The fixtures sweep it afterwards.

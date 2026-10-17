@@ -424,6 +424,25 @@ select {
   min-width: 0;
 }
 
+.date-stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.date-stepper button {
+  width: 24px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .hours-stepper {
   display: flex;
   align-items: center;

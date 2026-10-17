@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CatalogProject, Entry, Me, Period } from "./api";
-import { currentMonthKey, fetchJson, prefilledTask, todayLocal } from "./api";
+import { currentMonthKey, fetchJson, prefilledTask, shiftDay, todayLocal } from "./api";
 import { EntryEditor } from "./EntryEditor";
 import { describeSaveError } from "./errors";
 import { Logo } from "./Logo";
@@ -238,12 +238,20 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
             {selectedProject && selectedProject.tasks.length === 0 && (
               <p className="no-tasks">This project has no open tasks yet. Ask ops to add one.</p>
             )}
-            <input
-              aria-label="Date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
+            <div className="date-stepper">
+              <button type="button" onClick={() => setDate(shiftDay(date, -1))} aria-label="Previous day">
+                ‹
+              </button>
+              <input
+                aria-label="Date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+              <button type="button" onClick={() => setDate(shiftDay(date, 1))} aria-label="Next day">
+                ›
+              </button>
+            </div>
             <div className="hours-stepper">
               <button type="button" onClick={() => adjustHours(-0.25)} aria-label="Decrease hours">
                 −
