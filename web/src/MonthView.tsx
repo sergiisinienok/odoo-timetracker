@@ -337,6 +337,10 @@ export function MonthView({ me, onShowHistory }: { me: Me; onShowHistory: () => 
                                   setEditingKey(null);
                                   await load();
                                 }}
+                                onDeleted={async () => {
+                                  setEditingKey(null);
+                                  await load();
+                                }}
                               />
                             ) : (
                               <>

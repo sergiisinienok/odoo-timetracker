@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CatalogProject, Entry } from "./api";
+import type { CatalogProject, Entry, ErrorBody } from "./api";
 import { fetchJson, prefilledTask } from "./api";
 import { describeSaveError } from "./errors";
 
@@ -13,11 +13,13 @@ export function EntryEditor({
   entry,
   catalog,
   onSaved,
+  onDeleted,
   onCancel,
 }: {
   entry: Entry;
   catalog: CatalogProject[];
   onSaved: () => void;
+  onDeleted: () => void;
   onCancel: () => void;
 }) {
   const [projectId, setProjectId] = useState(entry.project_id);
@@ -25,6 +27,8 @@ export function EntryEditor({
   const [hours, setHours] = useState(String(entry.hours));
   const [note, setNote] = useState(entry.note);
   const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // The line's own project and task stay selectable even if they have since left
@@ -79,6 +83,27 @@ export function EntryEditor({
     }
   }
 
+  async function remove() {
+    setError(null);
+    setDeleting(true);
+    try {
+      // 204 has no body, so this does not go through fetchJson.
+      const res = await fetch(`/api/entries/${entry.id}`, { method: "DELETE" });
+      if (res.status !== 204 && res.status !== 202) {
+        const body = (await res.json().catch(() => null)) as ErrorBody | null;
+        const weekday = DAY_NAMES[new Date(`${entry.date}T00:00:00`).getDay()];
+        setError(
+          describeSaveError(body?.detail.error ?? "unknown", body?.detail.message ?? "Delete failed", weekday),
+        );
+        setConfirmingDelete(false);
+        return;
+      }
+      onDeleted();
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <form className="entry-editor" onSubmit={save}>
       <select aria-label="Edit project" value={projectId} onChange={(e) => changeProject(Number(e.target.value))}>
@@ -115,6 +140,20 @@ export function EntryEditor({
         <button type="button" className="back-link" onClick={onCancel}>
           Cancel
         </button>
+        {confirmingDelete ? (
+          <>
+            <button type="button" className="delete-entry" disabled={deleting} onClick={remove}>
+              {deleting ? "Deleting…" : `Yes, delete ${entry.hours.toFixed(2)}h`}
+            </button>
+            <button type="button" className="back-link" disabled={deleting} onClick={() => setConfirmingDelete(false)}>
+              Keep
+            </button>
+          </>
+        ) : (
+          <button type="button" className="delete-entry" onClick={() => setConfirmingDelete(true)}>
+            Delete
+          </button>
+        )}
       </div>
       {error && (
         <p className="save-message error" role="alert">

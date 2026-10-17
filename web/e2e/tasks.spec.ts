@@ -112,6 +112,27 @@ test("editing a legacy line forces a task to be picked", async ({ page, context 
   expect((await lineOf(legacyId)).task_id[0]).toBe(taskId);
 });
 
+test("deleting an entry asks first, then removes the line from Odoo", async ({ page, context }) => {
+  const taskId = await createTask(T_AND_M, "task of the mistaken line");
+  const lineId = await createLine({ projectId: T_AND_M, taskId, date: TODAY, hours: 0.25, note: "logged by mistake" });
+  await restartApiToDropWarmCaches();
+
+  await signIn(context);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Expand day" }).first().click();
+  await page.getByRole("button", { name: "Edit" }).first().click();
+
+  await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Keep" }).click(); // backing out leaves the line alone
+  expect(await model("account.analytic.line", "search", [[["id", "=", lineId]]])).toEqual([lineId]);
+
+  await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: /Yes, delete 0\.25h/ }).click();
+  await expect(page.getByLabel("Edit task")).toHaveCount(0);
+  await expect(page.getByText("logged by mistake")).toHaveCount(0);
+  expect(await model("account.analytic.line", "search", [[["id", "=", lineId]]])).toEqual([]);
+});
+
 test("an approver's override is explained in plain words, not refused with a code", async ({ page, context }) => {
   const taskA = await createTask(T_AND_M, "overridden line's task");
   const taskB = await createTask(T_AND_M, "task the employee tries to move to");

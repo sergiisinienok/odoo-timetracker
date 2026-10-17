@@ -40,6 +40,7 @@ re-confirmed on particlesg (decision 0013) before the pilot.
 
 - Phase: 2b — Tasks and billability (Phase 2 gate passed)
 - Last completed step: 2b.8 — project and task UI (trial only; 2b.2 skipped for now). Decision 0014 (every unbillable project open to everyone, no internal project, `INTERNAL_PROJECT_ID` removed) is built on top, uncommitted until its tests can run: employee 1 has a real 10 h line on today that fills the daily cap
+- Also done, outside the plan steps: employees can delete their own entry from the month view (Edit → Delete, with a confirm); the backend route already existed
 - Next step: the Phase 2b gate — needs particlesg (2b.2), and the owner's by-hand timing of a normal day (under a minute)
 - Last commit: this commit (`git log -1` — amending to embed a literal hash
   here just changes the hash, so this field names the step instead)
