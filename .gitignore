@@ -1,6 +1,8 @@
 # Secrets
 .env
 *.env.local
+.env.staging
+.env.prod
 
 # Python
 __pycache__/

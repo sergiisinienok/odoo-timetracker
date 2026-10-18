@@ -1,0 +1,43 @@
+{
+  "odoo_version": "19.0+e",
+  "validation_field": "validated",
+  "employee_validated_through": "last_validated_timesheet_date",
+  "company_validated_through": null,
+  "readonly_is_user_relative": false,
+  "validated_line_writable": true,
+  "validated_line_deletable": true,
+  "product_type_field": "type",
+  "product_type_service_value": "service",
+  "invoice_policy_field": "invoice_policy",
+  "invoice_policy_time_materials_value": "delivery",
+  "invoice_policy_flat_rate_value": "order",
+  "pricelist_item_price_field": "fixed_price",
+  "assignment_start_source": null,
+  "assignment_end_source": null,
+  "unpaid_recipe": "create() with so_line=False passed explicitly",
+  "default_project_field": "x_studio_default_project",
+  "app_entry_id_field": "x_studio_timetracking_app_entry_id",
+  "project_billable_field": "allow_billable",
+  "task_open_domain": [
+    [
+      "is_closed",
+      "=",
+      false
+    ],
+    [
+      "active",
+      "=",
+      true
+    ]
+  ],
+  "task_billable_field": "x_studio_billable",
+  "task_billable_same_as_project_value": "Same as project",
+  "task_billable_yes_value": "Billable",
+  "task_billable_no_value": "Not billable",
+  "line_task_field": "task_id",
+  "so_line_manual_marker_field": "is_so_line_edited",
+  "so_line_manual_marker_reliable": true,
+  "unpaid_recipe_with_task": "create() with so_line=False passed explicitly",
+  "project_timesheets_field": "allow_timesheets",
+  "project_internal_field": "is_internal_project"
+}

@@ -3,7 +3,7 @@
 Production preflight: does the Odoo instance in .env have everything
 odoo_profile.json says it has, and is the integration user provisioned the way
 the app needs? READ-ONLY -- authenticate, fields_get, read, search_read,
-check_access_rights. Nothing is created, written or deleted, so it is safe to
+has_access (check_access_rights on older releases). Nothing is created, written or deleted, so it is safe to
 run against production (ground rule 3 is about writes).
 
 Every Odoo name comes from the profile (ground rule 2); this script only maps
@@ -53,6 +53,19 @@ results: list[tuple[str, str, str]] = []
 def record(level: str, name: str, detail: str = "") -> None:
     results.append((level, name, detail))
     print(f"{level:<5} {name}" + (f" -- {detail}" if detail else ""))
+
+
+def can(call, model: str, op: str) -> bool:
+    """Does the current user hold `op` on `model`? Odoo renamed the check between
+    releases: check_access_rights (a bool) is gone on saas~19.4 and check_access is
+    private there. The public replacement is has_access, which over RPC needs an
+    explicit empty id list first or `op` is read as the ids (same quirk as has_group)."""
+    try:
+        return bool(call(model, "has_access", [], op))
+    except xmlrpc.client.Fault as exc:
+        if "does not exist" not in exc.faultString:
+            raise
+    return bool(call(model, "check_access_rights", op, raise_exception=False))
 
 
 def main() -> int:
@@ -111,7 +124,7 @@ def main() -> int:
     # -- mail.mail (decision 0009) ----------------------------------------
     for op, want in (("read", True), ("create", True), ("write", False), ("unlink", False)):
         try:
-            allowed = bool(call("mail.mail", "check_access_rights", op, raise_exception=False))
+            allowed = can(call, "mail.mail", op)
         except xmlrpc.client.Fault as exc:
             record("WARN", f"mail.mail {op}", f"could not determine: {exc.faultString.splitlines()[-1]}")
             continue
@@ -120,7 +133,7 @@ def main() -> int:
         elif want:
             record("FAIL", f"mail.mail {op} allowed", "the daily digest cannot be queued (decision 0009)")
         else:
-            record("WARN", f"mail.mail {op} denied", "integration user has more mail.mail access than the minimum")
+            record("WARN", f"mail.mail {op} allowed", "more than the minimum (expected denied); fine for a quick start, not for a service account")
 
     # -- every profile field exists, with the expected shape ----------------
     cache: dict[str, dict] = {}
