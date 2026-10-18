@@ -1,5 +1,5 @@
 {
-  "odoo_version": "19.0+e",
+  "odoo_version": "saas~19.4+e",
   "validation_field": "validated",
   "employee_validated_through": "last_validated_timesheet_date",
   "company_validated_through": null,

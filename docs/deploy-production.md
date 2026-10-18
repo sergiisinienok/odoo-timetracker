@@ -120,6 +120,10 @@ that ships is the one committed. Therefore:
    timesheet lines, projects and employees — by design, in a *test project*. Production work is
    limited to a clearly-named test project and test employee, and the owner approves that before
    it runs; nothing touches a real client's order.
+   **Four of those probes hardcode the trial's ids** (project 2, employee 1, sale line 1) and must
+   be changed to take their ids from the environment before they run; see C2 in
+   `docs/odoo-production-setup.md`. The read-only ones (`probe_assignments.py <project id>`,
+   `probe_products.py`, the lock spike) are safe now.
 2. Regenerate the profile. **`tools/build_profile.py` is named by the plan (2b.2) but does not exist
    in this repo**, so there is no script to run; either write it (a step of its own, with a
    Validate) or assemble the profile by hand from the probes' output. `git diff odoo_profile.json`

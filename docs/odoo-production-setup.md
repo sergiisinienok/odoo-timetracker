@@ -209,25 +209,45 @@ python3 tools/prod_preflight.py
 Exit 0, no FAIL. Read every WARN. A user who holds "Own Documents Only" and not "All Documents"
 shows as a FAIL on `integration user: Sales scope`.
 
-### C2. The probe suite (creates test data)
+### C2. The probe suite
 
-Run the Phase 0 and 2b probes, unmodified, against the test setup, then compare to the trial profile:
+Two groups. **Do not run the second group until its ids are changed** (see below).
+
+**Read-only, safe on production as they are** (they only call `fields_get`, `read`, `search_read`):
 
 ```
-python3 tools/probe_assignments.py --employee <test employee id>
+python3 tools/probe_assignments.py <project id>      # takes a PROJECT id, not an employee id
 python3 tools/probe_products.py
-python3 tools/probe_unpaid_line.py --cleanup
-python3 tools/probe_flat_rate.py
-python3 tools/probe_write_other_employee.py
-python3 tools/probe_tasks.py
 python3 tools/spike_odoo_timesheet_lock.py
 ```
 
-Every difference from `odoo_profile.json` is explained in `docs/decisions/` before the pilot
+`probe_assignments.py` prints the employee-to-order-line mappings on that project and resolves
+where assignment dates live. Pick a real project that has at least two employees mapped. Its
+`Usage` line was wrong in an earlier draft of this guide, which said `--employee`.
+
+**These write, and hardcode the trial's ids. NOT safe to run as they are:**
+
+| Script | Hardcoded | What it would do on production |
+|---|---|---|
+| `probe_unpaid_line.py` | project 2, employee 1, sale line 1 | create, rewrite and delete timesheet lines for whoever employee 1 is |
+| `probe_write_other_employee.py` | project 1 | create, update and delete lines for employees it picks |
+| `probe_flat_rate.py` | project 2, expects a hand-added order line | creates an employee and a mapping, logs hours |
+| `probe_tasks.py` | project 2, employee 1, sale line 1, internal project 1 | creates tasks, creates and rewrites lines, changes `so_line` |
+
+On the trial those ids were test records; on `particlesglobal-1` they are whatever has that id
+(Odoo's own "Internal" project is often id 1). The scripts have to take their ids from the
+environment, and point at the throwaway setup (`ZZ App Test` customer, project, order, employee)
+created for this, before they run. `probe_tasks.py` already reads `INTERNAL_PROJECT_ID` that way;
+the rest don't. That change is a small edit to each script and is its own step, approved by the
+owner first (it touches the probes the plan said to run "without modification", and
+"unmodified" is exactly what is unsafe here).
+
+Afterwards, every difference from `odoo_profile.json` is explained in `docs/decisions/`
 (`tools/build_profile.py` is named by the plan but doesn't exist yet; see `deploy-production.md`
 step 3). Re-check, too, whether each trial quirk in `CLAUDE.md` still holds here (the
 `has_group()` fault, `create()` returning a list over XML-RPC, the `partner_id` reset, whether
-`readonly_timesheet` varies by user).
+`readonly_timesheet` varies by user). Production is `saas~19.4`; the trial profile is `19.0`, and
+`check_access_rights` has already disappeared between them, so expect more.
 
 ### C3. The approver hand test (browser, not a script)
 
@@ -266,14 +286,14 @@ whether or not they're in the pilot.
 
 ## Checklist
 
-- [ ] Integration user created, groups set, `Sales` is **All Documents**, `mail.mail` read+create
-- [ ] Group behind the `mail.mail` grant written into decision 0009
-- [ ] Production API key created, stored only in `.env`
-- [ ] Three Studio fields exist with the expected technical names; app-entry-id **Indexed** (by eye)
-- [ ] Pilot employees: active, unique Work Email in `@particlesglobal.com`, timezone set
-- [ ] Role products, pricelists, orders, projects (Billable + Timesheets), per-employee mappings
-- [ ] Open tasks on every project employees will use; unbillable projects exist for PTO/bench/etc.
-- [ ] `tools/prod_preflight.py` exits 0 on production
+- [x] Integration user created, groups set, `Sales` is **All Documents**, `mail.mail` read+create
+- [x] Group behind the `mail.mail` grant written into decision 0009
+- [x] Production API key created, stored only in `.env`
+- [x] Three Studio fields exist with the expected technical names; app-entry-id **Indexed** (by eye)
+- [x] Pilot employees: active, unique Work Email in `@particlesglobal.com`, timezone set
+- [x] Role products, pricelists, orders, projects (Billable + Timesheets), per-employee mappings
+- [x] Open tasks on every project employees will use; unbillable projects exist for PTO/bench/etc.
+- [x] `tools/prod_preflight.py` exits 0 on production
 - [ ] Probe suite run on the throwaway setup; every difference from the profile explained
 - [ ] Approver hand test: `is_so_line_edited` True after set and clear
 - [ ] Throwaway customer/project/order/employee archived
